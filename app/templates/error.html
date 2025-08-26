@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}错误 {{ status_code }}{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header bg-danger text-white">
+                    <h4 class="mb-0">错误 {{ status_code }}</h4>
+                </div>
+                <div class="card-body">
+                    <p class="lead">{{ detail }}</p>
+                    <hr>
+                    <a href="javascript:history.back()" class="btn btn-primary">返回上一页</a>
+                    <a href="/" class="btn btn-secondary">返回首页</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

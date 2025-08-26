@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% block title %}查看配置 - {{ config.name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>配置详情</h2>
+        </div>
+        <div class="col text-end">
+            <a href="/configs/{{ config.id }}/edit" class="btn btn-primary">
+                <i class="fas fa-edit"></i> 编辑配置
+            </a>
+            <button type="button" class="btn btn-danger" onclick="deleteConfig()">
+                <i class="fas fa-trash"></i> 删除配置
+            </button>
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-danger" role="alert">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="card-title mb-0">基本信息</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <p><strong>配置名称：</strong>{{ config.name }}</p>
+                    <p><strong>所属环境：</strong>{{ config.environment }}</p>
+                    <p><strong>服务器IP：</strong>{{ config.server_ip }}</p>
+                </div>
+                <div class="col-md-6">
+                    <p><strong>文件路径：</strong>{{ config.file_path }}</p>
+                    <p><strong>创建时间：</strong>{{ config.created_at.strftime('%Y-%m-%d %H:%M:%S') if config.created_at
+                        else '未记录' }}</p>
+                    <p><strong>最后更新：</strong>{{ config.updated_at.strftime('%Y-%m-%d %H:%M:%S') if config.updated_at
+                        else '未更新' }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="card-title mb-0">配置内容</h5>
+        </div>
+        <div class="card-body">
+            <textarea id="editor" class="form-control" readonly>{{ config.content }}</textarea>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col">
+            <button type="button" class="btn btn-success" onclick="testConfig()">
+                <i class="fas fa-check-circle"></i> 测试配置
+            </button>
+            <button type="button" class="btn btn-warning" onclick="reloadConfig()">
+                <i class="fas fa-sync"></i> 重载配置
+            </button>
+        </div>
+    </div>
+</div>
+
+
+{% endblock %}
+
+{% block extra_js %}
+<!-- CodeMirror JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/nginx/nginx.min.js"></script>
+
+<script>
+    // 初始化CodeMirror编辑器
+    var editor = CodeMirror.fromTextArea(document.getElementById("editor"), {
+        mode: "nginx",
+        theme: "monokai",
+        lineNumbers: true,
+        readOnly: true
+    });
+
+    // 测试配置
+    async function testConfig() {
+        try {
+            showAlert.testConfig.start();
+            const response = await fetch('/configs/{{ config.id }}/test', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            const result = await response.json();
+            if (result.success) {
+                showAlert.testConfig.success();
+            } else {
+                showAlert.testConfig.error(result.message);
+            }
+        } catch (error) {
+            showAlert.testConfig.error(error.message);
+        }
+    }
+
+    // 重载配置
+    async function reloadConfig() {
+        const result = await showAlert.confirm('重载配置', '确定要重载配置吗？这将影响正在运行的服务。');
+        if (!result.isConfirmed) {
+            return;
+        }
+
+        try {
+            showAlert.reloadConfig.start();
+            const response = await fetch('/configs/{{ config.id }}/reload', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            const result = await response.json();
+            if (result.success) {
+                showAlert.reloadConfig.success();
+            } else {
+                showAlert.reloadConfig.error(result.message);
+            }
+        } catch (error) {
+            showAlert.reloadConfig.error(error.message);
+        }
+    }
+
+    // 删除配置
+    async function deleteConfig() {
+        // 第一次确认
+        const firstConfirm = await showAlert.confirm(
+            '删除配置',
+            '确定要删除此配置吗？此操作将从数据库和服务器中删除配置文件，但会在服务器上创建备份。'
+        );
+        if (!firstConfirm.isConfirmed) {
+            return;
+        }
+
+        // 第二次确认
+        const secondConfirm = await showAlert.confirm(
+            '二次确认删除',
+            '请再次确认删除此配置，此操作不可撤销！',
+            'warning'
+        );
+        if (!secondConfirm.isConfirmed) {
+            return;
+        }
+
+        try {
+            const loadingAlert = Swal.fire({
+                title: '正在删除',
+                text: '正在删除配置并创建备份...',
+                icon: 'info',
+                allowOutsideClick: false,
+                showConfirmButton: false,
+                willOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+
+            const response = await fetch('/configs/{{ config.id }}/delete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const result = await response.json();
+            loadingAlert.close();
+
+            if (result.success) {
+                await Swal.fire({
+                    title: '删除成功',
+                    text: result.message,
+                    icon: 'success',
+                    confirmButtonText: '确定'
+                });
+                // 删除成功后跳转到仪表盘
+                window.location.href = '/dashboard';
+            } else {
+                await Swal.fire({
+                    title: '删除失败',
+                    text: result.message,
+                    icon: 'error',
+                    confirmButtonText: '确定'
+                });
+            }
+        } catch (error) {
+            await Swal.fire({
+                title: '操作失败',
+                text: error.message,
+                icon: 'error',
+                confirmButtonText: '确定'
+            });
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,82 @@
+/* CSS Grid布局优化 */
+
+/* 页面标题网格 */
+.page-header-grid {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+/* 仪表盘网格布局 */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+/* 环境状态网格 */
+.env-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+}
+
+/* 卡片头部网格 */
+.card-header-grid {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+}
+
+/* 卡片内容网格 */
+.card-grid {
+    display: grid;
+    gap: 1rem;
+}
+
+/* 配置列表网格 */
+.configs-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+}
+
+/* 环境筛选网格 */
+.filter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, auto));
+    gap: 0.5rem;
+}
+
+/* 表格操作按钮网格 */
+.action-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(30px, auto));
+    gap: 0.25rem;
+    justify-content: start;
+}
+
+/* 响应式调整 */
+@media (min-width: 768px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (min-width: 992px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .configs-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (min-width: 1200px) {
+    .env-grid {
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    }
+}

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}创建新环境{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>创建新环境</h2>
+        </div>
+        <div class="col text-end">
+            <a href="/environments" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> 返回列表
+            </a>
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-danger" role="alert">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-body">
+            <form method="post" action="/environments/create">
+                <div class="mb-3">
+                    <label for="name" class="form-label">环境名称</label>
+                    <input type="text" class="form-control" id="name" name="name" required>
+                    <div class="form-text">环境的唯一标识，例如：dev, test, uat, prd</div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="description" class="form-label">环境描述</label>
+                    <textarea class="form-control" id="description" name="description" rows="2"></textarea>
+                </div>
+
+                <div class="mb-3">
+                    <label for="server_ip" class="form-label">服务器IP</label>
+                    <input type="text" class="form-control" id="server_ip" name="server_ip" required>
+                </div>
+
+                <div class="mb-3">
+                    <label for="ssh_port" class="form-label">SSH端口</label>
+                    <input type="number" class="form-control" id="ssh_port" name="ssh_port" value="22" required>
+                </div>
+
+                <div class="mb-3">
+                    <label for="nginx_path" class="form-label">Nginx路径</label>
+                    <input type="text" class="form-control" id="nginx_path" name="nginx_path" value="/etc/nginx"
+                        required>
+                    <div class="form-text">Nginx安装的根目录路径</div>
+                </div>
+
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="is_active" name="is_active" checked>
+                    <label class="form-check-label" for="is_active">激活环境</label>
+                </div>
+
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> 保存环境
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

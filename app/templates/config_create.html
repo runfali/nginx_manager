@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}创建新配置{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>创建新配置</h2>
+        </div>
+        <div class="col text-end">
+            {% if env_id %}
+            <a href="/configs/browse/{{ env_id }}{% if current_path %}?path={{ current_path }}{% endif %}"
+                class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> 返回目录
+            </a>
+            {% else %}
+            <a href="/configs" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> 返回列表
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-danger" role="alert">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-body">
+            {% if env_id %}
+            <form method="post"
+                action="/configs/create/{{ env_id }}{% if current_path %}?path={{ current_path }}{% endif %}">
+                {% else %}
+                <form method="post" action="/configs/create">
+                    {% endif %}
+                    <div class="mb-3">
+                        <label for="name" class="form-label">配置名称</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                        <div class="form-text">给配置文件起一个有意义的名称，便于识别</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="environment" class="form-label">所属环境</label>
+                        <select class="form-select" id="environment" name="environment" required>
+                            <option value="" selected disabled>请选择环境</option>
+                            {% for env in environments %}
+                            <option value="{{ env.name }}">{{ env.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="file_path" class="form-label">文件路径</label>
+                        <input type="text" class="form-control" id="file_path" name="file_path"
+                            value="{{ suggested_file_path }}" required>
+                        <div class="form-text">配置文件在服务器上的完整路径，例如：/etc/nginx/conf.d/app.conf</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="editor" class="form-label">配置内容</label>
+                        <textarea id="editor" name="content" class="form-control"></textarea>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> 保存配置
+                        </button>
+                    </div>
+                </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- CodeMirror JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/nginx/nginx.min.js"></script>
+
+<script>
+    // 初始化CodeMirror编辑器
+    var editor = CodeMirror.fromTextArea(document.getElementById("editor"), {
+        mode: "nginx",
+        theme: "monokai",
+        lineNumbers: true,
+        indentUnit: 4,
+        lineWrapping: true
+    });
+
+    // 设置一个基本的Nginx配置模板
+    editor.setValue(`server {
+    listen 80;
+    server_name example.com;
+    
+    location / {
+        root /var/www/html;
+        index index.html;
+    }
+}`);
+</script>
+{% endblock %}

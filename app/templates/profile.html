@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}个人资料{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>个人资料</h2>
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-danger" role="alert">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    {% if success %}
+    <div class="alert alert-success" role="alert">
+        {{ success }}
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-body">
+            <form method="post" action="/users/profile">
+                <div class="mb-3">
+                    <label for="username" class="form-label">用户名</label>
+                    <input type="text" class="form-control" id="username" value="{{ current_user.username }}" readonly>
+                    <div class="form-text">用户名不可修改</div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="email" class="form-label">电子邮箱</label>
+                    <input type="email" class="form-control" id="email" name="email" value="{{ current_user.email }}"
+                        required>
+                </div>
+
+                <div class="mb-3">
+                    <label for="current_password" class="form-label">当前密码</label>
+                    <input type="password" class="form-control" id="current_password" name="current_password">
+                    <div class="form-text">仅在需要修改密码时填写</div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="new_password" class="form-label">新密码</label>
+                    <input type="password" class="form-control" id="new_password" name="new_password">
+                    <div class="form-text">仅在需要修改密码时填写</div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="ssh_private_key" class="form-label">SSH私钥</label>
+                    <textarea class="form-control" id="ssh_private_key" name="ssh_private_key"
+                        rows="5">{{ current_user.ssh_private_key }}</textarea>
+                    <div class="form-text">用于连接服务器的SSH私钥，格式如：-----BEGIN RSA PRIVATE KEY-----...</div>
+                </div>
+
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> 保存修改
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

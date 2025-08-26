@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}环境管理{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header-grid">
+        <div>
+            <h2>环境管理</h2>
+        </div>
+        {% if current_user.is_superuser %}
+        <div class="text-end">
+            <a href="/environments/create" class="btn btn-primary">
+                <i class="fas fa-plus"></i> 创建新环境
+            </a>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="card fade-in">
+        <div class="card-header card-header-grid">
+            <h5 class="card-title mb-0">环境列表</h5>
+        </div>
+        <div class="card-body">
+            {% if environments %}
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>环境名称</th>
+                            <th>服务器IP</th>
+                            <th>SSH端口</th>
+                            <th>Nginx路径</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for env in environments %}
+                        <tr>
+                            <td>{{ env.id }}</td>
+                            <td>{{ env.name }}</td>
+                            <td>{{ env.server_ip }}</td>
+                            <td>{{ env.ssh_port }}</td>
+                            <td>{{ env.nginx_path }}</td>
+                            <td>
+                                {% if env.is_active %}
+                                <span class="badge bg-success">激活</span>
+                                {% else %}
+                                <span class="badge bg-danger">禁用</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="action-grid">
+                                    <a href="/configs?environment={{ env.name }}" class="btn btn-sm btn-info"
+                                        title="查看配置">
+                                        <i class="fas fa-list"></i>
+                                    </a>
+                                    {% if current_user.is_superuser %}
+                                    <a href="/environments/{{ env.id }}/edit" class="btn btn-sm btn-primary" title="编辑">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-info" role="alert">
+                暂无环境数据。{% if current_user.is_superuser %}点击"创建新环境"按钮添加环境。{% else %}请联系管理员添加环境。{% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

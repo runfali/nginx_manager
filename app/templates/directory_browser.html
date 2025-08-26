@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+
+{% block title %}目录浏览 - {{ current_path }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>Nginx配置目录浏览</h2>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/configs/browse/{{ env_id }}">根目录</a></li>
+                    {% for crumb in breadcrumbs %}
+                    <li class="breadcrumb-item {% if loop.last %}active{% endif %}">
+                        {% if not loop.last %}
+                        <a href="/configs/browse/{{ env_id }}?path={{ crumb.path }}">{{ crumb.name }}</a>
+                        {% else %}
+                        {{ crumb.name }}
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ol>
+            </nav>
+        </div>
+        <div class="col text-end">
+            <a href="/configs/create/{{ env_id }}?path={{ current_path }}" class="btn btn-primary">
+                <i class="fas fa-plus"></i> 创建配置
+            </a>
+            <a href="/configs/sync/{{ env_id }}?path={{ current_path }}" class="btn btn-success sync-btn">
+                <i class="fas fa-sync"></i> 同步当前目录
+            </a>
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-danger" role="alert">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    {% if success_message %}
+    <div class="alert alert-success" role="alert">
+        {{ success_message }}
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">{{ environment.name }} - {{ current_path or environment.nginx_path }}</h5>
+            <span class="badge bg-info">{{ items|length }} 个项目</span>
+        </div>
+        <div class="card-body">
+            {% if items %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;"></th>
+                            <th>名称</th>
+                            <th>类型</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in items %}
+                        <tr>
+                            <td>
+                                {% if item.is_dir %}
+                                <i class="fas fa-folder text-warning"></i>
+                                {% else %}
+                                <i class="fas fa-file-code text-primary"></i>
+                                {% endif %}
+                            </td>
+                            <td>{{ item.name }}</td>
+                            <td>
+                                {% if item.is_dir %}
+                                <span class="badge bg-warning">目录</span>
+                                {% else %}
+                                <span class="badge bg-primary">文件</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if item.is_dir %}
+                                <a href="/configs/browse/{{ env_id }}?path={{ item.full_path }}"
+                                    class="btn btn-sm btn-info">
+                                    <i class="fas fa-folder-open"></i> 打开
+                                </a>
+                                {% else %}
+                                {% if item.config_id %}
+                                <a href="/configs/{{ item.config_id }}" class="btn btn-sm btn-info">
+                                    <i class="fas fa-eye"></i> 查看
+                                </a>
+                                <a href="/configs/{{ item.config_id }}/edit" class="btn btn-sm btn-primary">
+                                    <i class="fas fa-edit"></i> 编辑
+                                </a>
+                                {% else %}
+                                <button class="btn btn-sm btn-success" onclick="syncFile('{{ item.full_path }}')">
+                                    <i class="fas fa-download"></i> 同步
+                                </button>
+                                {% endif %}
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-info" role="alert">
+                当前目录为空。
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 同步单个文件
+    async function syncFile(filePath) {
+        try {
+            // 显示加载中弹窗
+            showAlert.syncConfig.start();
+
+            const response = await fetch('/configs/sync_file/{{ env_id }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ file_path: filePath })
+            });
+
+            const result = await response.json();
+
+            // 显示结果
+            if (result.success) {
+                showAlert.syncConfig.success();
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            } else {
+                showAlert.syncConfig.error(result.message);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showAlert.syncConfig.error('同步过程中发生错误');
+        }
+    }
+
+    // 同步目录按钮点击事件
+    document.addEventListener('DOMContentLoaded', function () {
+        const syncBtn = document.querySelector('.sync-btn');
+        if (syncBtn) {
+            syncBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                const href = this.getAttribute('href');
+
+                // 显示加载中弹窗
+                showAlert.syncConfig.start();
+
+                // 显示加载中
+                this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 同步中...';
+                this.disabled = true;
+
+                // 发送同步请求
+                fetch(href, {
+                    method: 'POST'
+                })
+                    .then(response => response.json())
+                    .then(result => {
+                        // 恢复按钮状态
+                        this.innerHTML = '<i class="fas fa-sync"></i> 同步当前目录';
+                        this.disabled = false;
+
+                        // 显示结果
+                        if (result.success) {
+                            showAlert.syncConfig.success();
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 1500);
+                        } else {
+                            showAlert.syncConfig.error(result.message || '同步失败');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        // 恢复按钮状态
+                        this.innerHTML = '<i class="fas fa-sync"></i> 同步当前目录';
+                        this.disabled = false;
+                        // 显示错误信息
+                        showAlert.syncConfig.error('同步过程中发生错误');
+                    });
+            });
+        }
+    });
+</script>
+{% endblock %}

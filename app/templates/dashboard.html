@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}仪表盘{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header-grid">
+        <div>
+            <h2>Nginx配置管理平台</h2>
+            <p class="text-muted">欢迎使用Nginx配置管理平台，您可以在这里管理多环境的Nginx配置文件。</p>
+        </div>
+    </div>
+
+    <!-- 环境概览 -->
+    <div class="dashboard-grid">
+        <div>
+            <div class="card fade-in">
+                <div class="card-header card-header-grid">
+                    <h5 class="card-title mb-0">环境概览</h5>
+                </div>
+                <div class="card-body card-grid">
+                    <div class="env-grid">
+                        {% for env in environments %}
+                        <div class="fade-in">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title">{{ env.name }}</h5>
+                                    <h6 class="card-subtitle mb-2 text-muted">{{ env.server_ip }}</h6>
+                                    <p class="card-text">{{ env.description or '暂无描述' }}</p>
+                                    <div class="btn-group">
+                                        <a href="/configs/browse/{{ env.id }}" class="btn btn-sm btn-info">
+                                            <i class="fas fa-folder-open"></i> 浏览目录
+                                        </a>
+                                        <button onclick="syncConfigs('{{ env.id }}')" class="btn btn-sm btn-success">
+                                            <i class="fas fa-sync"></i> 同步配置
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 最近更新的配置 -->
+    <div class="dashboard-grid">
+        <div>
+            <div class="card fade-in">
+                <div class="card-header card-header-grid">
+                    <h5 class="card-title mb-0">最近更新的配置</h5>
+                </div>
+                <div class="card-body">
+                    {% if recent_configs %}
+                    <div class="table-responsive" style="max-height: 500px; overflow-y: auto; margin-bottom: 15px;">
+                        <table class="table table-striped table-hover">
+                            <thead>
+                                <tr>
+                                    <th>配置名称</th>
+                                    <th>环境</th>
+                                    <th>服务器IP</th>
+                                    <th>文件路径</th>
+                                    <th>最后更新</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for config in recent_configs %}
+                                <tr>
+                                    <td>{{ config.name }}</td>
+                                    <td><span class="badge bg-info">{{ config.environment }}</span></td>
+                                    <td>{{ config.server_ip }}</td>
+                                    <td>{{ config.file_path }}</td>
+                                    <td>{{ config.updated_at.strftime('%Y-%m-%d %H:%M:%S') if config.updated_at else
+                                        '未更新' }}</td>
+                                    <td>
+                                        <div class="action-grid">
+                                            <a href="/configs/{{ config.id }}" class="btn btn-sm btn-info" title="查看">
+                                                <i class="fas fa-eye"></i>
+                                            </a>
+                                            <a href="/configs/{{ config.id }}/edit" class="btn btn-sm btn-primary"
+                                                title="编辑">
+                                                <i class="fas fa-edit"></i>
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info" role="alert">
+                        暂无配置数据。点击<a href="/configs/create">创建新配置</a>添加配置。
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
