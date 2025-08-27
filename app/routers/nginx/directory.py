@@ -364,7 +364,6 @@ async def browse_directory(
                 breadcrumbs.append({"name": part, "path": current})
 
     # 连接服务器并获取目录内容
-    temp_path = None
     ssh = None
     sftp = None
     items = []
@@ -372,13 +371,6 @@ async def browse_directory(
     success_message = request.query_params.get("success_message")
 
     try:
-        # 不再强制要求用户设置SSH私钥，将使用默认私钥路径或用户私钥
-
-        # 使用连接池时不需要创建私钥临时文件
-        # with tempfile.NamedTemporaryFile(mode="w", delete=False) as temp_file:
-        #     temp_file.write(current_user.ssh_private_key)
-        #     temp_path = temp_file.name
-
         # 使用SSH连接池获取连接
         from app.services.ssh_utils import SSHUtils
 
@@ -405,91 +397,48 @@ async def browse_directory(
                 },
             )
 
-        # 获取目录内容（处理软链接目录）
-        sftp = ssh.open_sftp()
-        # 先检查路径是否为软链接
-        stdin, stdout, stderr = ssh.exec_command(
-            f"test -L '{full_path}' && echo 'symlink' || echo 'not_symlink'"
-        )
-        is_symlink = stdout.read().decode().strip() == "symlink"
-
-        # 初始化real_path变量，避免未绑定错误
-        real_path = full_path
-
-        # 如果是软链接，获取真实路径
-        if is_symlink:
-            if ssh is None:
-                return templates.TemplateResponse(
-                    "directory_browser.html",
-                    {
-                        "request": request,
-                        "current_user": current_user,
-                        "environment": env,
-                        "env_id": env_id,
-                        "current_path": current_path,
-                        "breadcrumbs": breadcrumbs,
-                        "items": items,
-                        "error": "SSH连接失败",
-                    },
-                )
-            stdin, stdout, stderr = ssh.exec_command(f"readlink -f '{full_path}'")
-            real_path = stdout.read().decode().strip()
-            dir_items = sftp.listdir_attr(real_path)
-        else:
-            dir_items = sftp.listdir_attr(full_path)
-
-        # 处理目录内容
-        for item in dir_items:
-            name = item.filename
-            mode = item.st_mode
-            if mode is None:
-                # 如果无法获取模式，跳过或视为文件
-                is_dir = False
-            else:
-                is_dir = stat.S_ISDIR(mode)
-
-            # 检查是否为软链接
-            item_path = os.path.join(real_path if is_symlink else full_path, name)
-            if ssh is None:
-                return templates.TemplateResponse(
-                    "directory_browser.html",
-                    {
-                        "request": request,
-                        "current_user": current_user,
-                        "environment": env,
-                        "env_id": env_id,
-                        "current_path": current_path,
-                        "breadcrumbs": breadcrumbs,
-                        "items": items,
-                        "error": "SSH连接失败",
-                    },
-                )
-            stdin, stdout, stderr = ssh.exec_command(
-                f"test -L '{item_path}' && echo 'symlink' || echo 'not_symlink'"
+        # 使用新的批量方法获取目录信息
+        try:
+            file_info = SSHUtils.get_directory_info(ssh, full_path, timeout=30)
+        except Exception as e:
+            return templates.TemplateResponse(
+                "directory_browser.html",
+                {
+                    "request": request,
+                    "current_user": current_user,
+                    "environment": env,
+                    "env_id": env_id,
+                    "current_path": current_path,
+                    "breadcrumbs": breadcrumbs,
+                    "items": items,
+                    "error": f"获取目录内容失败: {str(e)}",
+                },
             )
-            item_is_symlink = stdout.read().decode().strip() == "symlink"
 
-            # 如果是软链接，获取其类型（目录或文件）
-            if item_is_symlink:
-                if ssh is None:
-                    return templates.TemplateResponse(
-                        "directory_browser.html",
-                        {
-                            "request": request,
-                            "current_user": current_user,
-                            "environment": env,
-                            "env_id": env_id,
-                            "current_path": current_path,
-                            "breadcrumbs": breadcrumbs,
-                            "items": items,
-                            "error": "SSH连接失败",
-                        },
-                    )
-                stdin, stdout, stderr = ssh.exec_command(
-                    f"test -d '{item_path}' && echo 'dir' || echo 'file'"
+        # 批量查询数据库中的配置文件
+        conf_files = [
+            name
+            for name, info in file_info.items()
+            if not info["is_dir"] and name.endswith(".conf")
+        ]
+
+        config_map = {}
+        if conf_files:
+            # 构建文件路径列表进行批量查询
+            file_paths = [os.path.join(full_path, name) for name in conf_files]
+            configs = (
+                db.query(NginxConfig)
+                .filter(
+                    NginxConfig.file_path.in_(file_paths),
+                    NginxConfig.environment == env.name,
                 )
-                symlink_type = stdout.read().decode().strip()
-                is_dir = symlink_type == "dir"
+                .all()
+            )
+            config_map = {config.file_path: config.id for config in configs}
+
+        # 处理文件信息
+        for name, info in file_info.items():
+            is_dir = info["is_dir"]
 
             # 只显示目录和.conf文件，过滤其他文件
             if not is_dir and not name.endswith(".conf"):
@@ -501,16 +450,7 @@ async def browse_directory(
             config_id = None
             if not is_dir and name.endswith(".conf"):
                 file_path = os.path.join(full_path, name)
-                config = (
-                    db.query(NginxConfig)
-                    .filter(
-                        NginxConfig.file_path == file_path,
-                        NginxConfig.environment == env.name,
-                    )
-                    .first()
-                )
-                if config:
-                    config_id = config.id
+                config_id = config_map.get(file_path)
 
             items.append(
                 {
@@ -531,12 +471,7 @@ async def browse_directory(
         # 关闭SFTP连接
         if sftp:
             sftp.close()
-        # 使用连接池时不需要清理私钥临时文件
-        # if temp_path and os.path.exists(temp_path):
-        #     os.unlink(temp_path)
         # 不需要关闭SSH连接，由连接池管理
-        # if ssh:
-        #     ssh.close()
 
     return templates.TemplateResponse(
         "directory_browser.html",

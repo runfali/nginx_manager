@@ -45,7 +45,7 @@ class SSHUtils:
 
     @staticmethod
     def execute_command(
-        ssh_client: paramiko.SSHClient, command: str
+        ssh_client: paramiko.SSHClient, command: str, timeout: int = 30
     ) -> Tuple[int, str, str]:
         """
         执行SSH命令并返回退出码、标准输出和标准错误
@@ -53,6 +53,7 @@ class SSHUtils:
         Args:
             ssh_client: SSH客户端
             command: 要执行的命令
+            timeout: 命令执行超时时间（秒）
 
         Returns:
             Tuple[int, str, str]: 退出码、标准输出和标准错误
@@ -64,11 +65,15 @@ class SSHUtils:
 
         try:
             # 执行命令
-            stdin, stdout, stderr = ssh_client.exec_command(command)
+            stdin, stdout, stderr = ssh_client.exec_command(command, timeout=timeout)
 
             # 断言确保非空
             assert stdout is not None, "stdout 未正确初始化"
             assert stderr is not None, "stderr 未正确初始化"
+
+            # 设置通道超时
+            stdout.channel.settimeout(timeout)
+            stderr.channel.settimeout(timeout)
 
             exit_code = stdout.channel.recv_exit_status()
             output = stdout.read().decode()  # 直接读取
@@ -86,6 +91,142 @@ class SSHUtils:
                         stream.close()
                     except Exception:
                         pass  # 忽略关闭时的异常
+
+    @staticmethod
+    def execute_batch_commands(
+        ssh_client: paramiko.SSHClient, commands: list[str], timeout: int = 30
+    ) -> Dict[str, Tuple[int, str, str]]:
+        """
+        批量执行SSH命令，提高效率
+
+        Args:
+            ssh_client: SSH客户端
+            commands: 要执行的命令列表
+            timeout: 命令执行超时时间（秒）
+
+        Returns:
+            Dict[str, Tuple[int, str, str]]: 命令到结果的映射
+        """
+        results = {}
+
+        # 将多个命令组合成一个复合命令
+        combined_command = "; ".join(
+            [
+                f"echo 'CMD_START_{i}'; {cmd}; echo 'CMD_END_{i}_$?'"
+                for i, cmd in enumerate(commands)
+            ]
+        )
+
+        try:
+            exit_code, output, error = SSHUtils.execute_command(
+                ssh_client, combined_command, timeout
+            )
+
+            # 解析输出
+            lines = output.strip().split("\n")
+            current_cmd_idx = None
+            current_output = []
+
+            for line in lines:
+                if line.startswith("CMD_START_"):
+                    current_cmd_idx = int(line.split("_")[2])
+                    current_output = []
+                elif line.startswith("CMD_END_"):
+                    parts = line.split("_")
+                    cmd_idx = int(parts[2])
+                    cmd_exit_code = int(parts[3])
+
+                    if current_cmd_idx == cmd_idx:
+                        cmd_output = "\n".join(current_output)
+                        results[commands[cmd_idx]] = (cmd_exit_code, cmd_output, "")
+                else:
+                    if current_cmd_idx is not None:
+                        current_output.append(line)
+
+            # 如果解析失败，回退到逐个执行
+            if len(results) != len(commands):
+                results.clear()
+                for cmd in commands:
+                    try:
+                        result = SSHUtils.execute_command(ssh_client, cmd, timeout)
+                        results[cmd] = result
+                    except Exception as e:
+                        results[cmd] = (1, "", str(e))
+
+        except Exception as e:
+            # 如果批量执行失败，回退到逐个执行
+            for cmd in commands:
+                try:
+                    result = SSHUtils.execute_command(ssh_client, cmd, timeout)
+                    results[cmd] = result
+                except Exception as cmd_e:
+                    results[cmd] = (1, "", str(cmd_e))
+
+        return results
+
+    @staticmethod
+    def get_directory_info(
+        ssh_client: paramiko.SSHClient, directory_path: str, timeout: int = 30
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        一次性获取目录中所有文件的信息，包括类型和软链接状态
+
+        Args:
+            ssh_client: SSH客户端
+            directory_path: 目录路径
+            timeout: 超时时间（秒）
+
+        Returns:
+            Dict[str, Dict[str, Any]]: 文件名到文件信息的映射
+        """
+        # 使用find命令一次性获取所有文件信息
+        command = """
+        cd "{}" 2>/dev/null && \
+        find . -maxdepth 1 -mindepth 1 -exec sh -c '
+            for file; do
+                basename="$(basename "$file")"
+                if [ -L "$file" ]; then
+                    if [ -d "$file" ]; then
+                        echo "$basename|symlink_dir"
+                    else
+                        echo "$basename|symlink_file"
+                    fi
+                elif [ -d "$file" ]; then
+                    echo "$basename|directory"
+                elif [ -f "$file" ]; then
+                    echo "$basename|file"
+                else
+                    echo "$basename|unknown"
+                fi
+            done
+        ' sh {{}} +
+        """.format(
+            directory_path
+        )
+
+        try:
+            exit_code, output, error = SSHUtils.execute_command(
+                ssh_client, command, timeout
+            )
+
+            file_info = {}
+            if exit_code == 0 and output.strip():
+                for line in output.strip().split("\n"):
+                    if "|" in line:
+                        filename, file_type = line.rsplit("|", 1)
+                        is_dir = file_type in ["directory", "symlink_dir"]
+                        is_symlink = file_type.startswith("symlink")
+
+                        file_info[filename] = {
+                            "is_dir": is_dir,
+                            "is_symlink": is_symlink,
+                            "type": file_type,
+                        }
+
+            return file_info
+
+        except Exception as e:
+            raise RuntimeError(f"获取目录信息失败: {str(e)}") from e
 
     @staticmethod
     def get_sftp_client(

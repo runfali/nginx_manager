@@ -2,18 +2,98 @@
 
 {% block title %}目录浏览 - {{ current_path }}{% endblock %}
 
+{% block extra_css %}
+<style>
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: none;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+    }
+
+    .loading-content {
+        background: white;
+        padding: 2rem;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #007bff;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1rem;
+    }
+
+    @keyframes spin {
+        0% {
+            transform: rotate(0deg);
+        }
+
+        100% {
+            transform: rotate(360deg);
+        }
+    }
+
+    .directory-item:hover {
+        background-color: #f8f9fa;
+        cursor: pointer;
+    }
+
+    /* 面包屑链接样式 */
+    .breadcrumb-link {
+        color: #0d6efd;
+        text-decoration: none;
+        transition: color 0.15s ease-in-out;
+    }
+
+    .breadcrumb-link:hover {
+        color: #0a58ca;
+        text-decoration: underline;
+    }
+
+    .breadcrumb-link:focus {
+        color: #0a58ca;
+        text-decoration: underline;
+        outline: none;
+        box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    }
+</style>
+{% endblock %}
+
 {% block content %}
+<!-- 加载遇罩层 -->
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-content">
+        <div class="spinner"></div>
+        <h5>正在加载目录内容...</h5>
+        <p class="text-muted">请稍候，正在连接服务器获取文件列表</p>
+    </div>
+</div>
+
 <div class="container">
     <div class="row mb-4">
         <div class="col">
             <h2>Nginx配置目录浏览</h2>
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb">
-                    <li class="breadcrumb-item"><a href="/configs/browse/{{ env_id }}">根目录</a></li>
+                    <li class="breadcrumb-item"><a href="/configs/browse/{{ env_id }}" class="breadcrumb-link">根目录</a>
+                    </li>
                     {% for crumb in breadcrumbs %}
                     <li class="breadcrumb-item {% if loop.last %}active{% endif %}">
                         {% if not loop.last %}
-                        <a href="/configs/browse/{{ env_id }}?path={{ crumb.path }}">{{ crumb.name }}</a>
+                        <a href="/configs/browse/{{ env_id }}?path={{ crumb.path }}" class="breadcrumb-link">{{
+                            crumb.name }}</a>
                         {% else %}
                         {{ crumb.name }}
                         {% endif %}
@@ -63,7 +143,8 @@
                     </thead>
                     <tbody>
                         {% for item in items %}
-                        <tr>
+                        <tr class="directory-item{% if item.is_dir %} clickable-row{% endif %}" {% if item.is_dir
+                            %}data-href="/configs/browse/{{ env_id }}?path={{ item.full_path }}" {% endif %}>
                             <td>
                                 {% if item.is_dir %}
                                 <i class="fas fa-folder text-warning"></i>
@@ -82,7 +163,7 @@
                             <td>
                                 {% if item.is_dir %}
                                 <a href="/configs/browse/{{ env_id }}?path={{ item.full_path }}"
-                                    class="btn btn-sm btn-info">
+                                    class="btn btn-sm btn-info dir-link">
                                     <i class="fas fa-folder-open"></i> 打开
                                 </a>
                                 {% else %}
@@ -119,6 +200,27 @@
 
 {% block extra_js %}
 <script>
+    // 加载状态管理
+    function showLoading(message = '正在加载...') {
+        const overlay = document.getElementById('loadingOverlay');
+        const messageEl = overlay.querySelector('h5');
+        if (messageEl) {
+            messageEl.textContent = message;
+        }
+        overlay.style.display = 'flex';
+    }
+
+    function hideLoading() {
+        const overlay = document.getElementById('loadingOverlay');
+        overlay.style.display = 'none';
+    }
+
+    // 目录导航加载提示
+    function navigateWithLoading(url, message = '正在加载目录内容...') {
+        showLoading(message);
+        window.location.href = url;
+    }
+
     // 同步单个文件
     async function syncFile(filePath) {
         try {
@@ -150,8 +252,35 @@
         }
     }
 
-    // 同步目录按钮点击事件
+    // DOM加载完成后的初始化
     document.addEventListener('DOMContentLoaded', function () {
+        // 页面加载完成后隐藏加载遵罩
+        hideLoading();
+
+        // 点击表格行进入目录
+        document.querySelectorAll('.clickable-row').forEach(row => {
+            row.addEventListener('click', function (e) {
+                // 避免点击按钮时触发
+                if (e.target.closest('a, button')) {
+                    return;
+                }
+                const href = this.getAttribute('data-href');
+                if (href) {
+                    navigateWithLoading(href);
+                }
+            });
+        });
+
+        // 目录链接点击事件
+        document.querySelectorAll('.dir-link, .breadcrumb-link').forEach(link => {
+            link.addEventListener('click', function (e) {
+                e.preventDefault();
+                const href = this.getAttribute('href');
+                navigateWithLoading(href, '正在加载目录...');
+            });
+        });
+
+        // 同步目录按钮点击事件
         const syncBtn = document.querySelector('.sync-btn');
         if (syncBtn) {
             syncBtn.addEventListener('click', function (e) {
@@ -195,6 +324,25 @@
                     });
             });
         }
+    });
+
+    // 页面卡顿检测（可选）
+    let pageLoadTimeout = setTimeout(() => {
+        hideLoading();
+        // 如果超时，显示错误信息
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'alert alert-warning alert-dismissible fade show';
+        errorDiv.innerHTML = `
+            <strong>加载超时</strong> 页面加载时间较长，可能因为网络或服务器响应缓慢。
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.querySelector('.container').prepend(errorDiv);
+    }, 15000); // 15秒超时
+
+    // 页面加载完成后清除超时定时器
+    window.addEventListener('load', () => {
+        clearTimeout(pageLoadTimeout);
+        hideLoading();
     });
 </script>
 {% endblock %}
