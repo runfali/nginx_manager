@@ -10,7 +10,7 @@
         </div>
         <div class="col text-end">
             {% if env_id %}
-            <a href="/configs/browse/{{ env_id }}{% if current_path %}?path={{ current_path }}{% endif %}"
+            <a href="/configs/browse/browse/{{ env_id }}{% if current_path %}?path={{ current_path }}{% endif %}"
                 class="btn btn-secondary">
                 <i class="fas fa-arrow-left"></i> 返回目录
             </a>
@@ -30,12 +30,8 @@
 
     <div class="card">
         <div class="card-body">
-            {% if env_id %}
             <form method="post"
-                action="/configs/create/{{ env_id }}{% if current_path %}?path={{ current_path }}{% endif %}">
-                {% else %}
-                <form method="post" action="/configs/create">
-                    {% endif %}
+                action="/configs/browse/create/{{ env_id }}{% if current_path %}?path={{ current_path }}{% endif %}">
                     <div class="mb-3">
                         <label for="name" class="form-label">配置名称</label>
                         <input type="text" class="form-control" id="name" name="name" required>

@@ -87,12 +87,12 @@
             <h2>Nginx配置目录浏览</h2>
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb">
-                    <li class="breadcrumb-item"><a href="/configs/browse/{{ env_id }}" class="breadcrumb-link">根目录</a>
+                    <li class="breadcrumb-item"><a href="/configs/browse/browse/{{ env_id }}" class="breadcrumb-link">根目录</a>
                     </li>
                     {% for crumb in breadcrumbs %}
                     <li class="breadcrumb-item {% if loop.last %}active{% endif %}">
                         {% if not loop.last %}
-                        <a href="/configs/browse/{{ env_id }}?path={{ crumb.path }}" class="breadcrumb-link">{{
+                        <a href="/configs/browse/browse/{{ env_id }}?path={{ crumb.path }}" class="breadcrumb-link">{{
                             crumb.name }}</a>
                         {% else %}
                         {{ crumb.name }}
@@ -103,7 +103,7 @@
             </nav>
         </div>
         <div class="col text-end">
-            <a href="/configs/create/{{ env_id }}?path={{ current_path }}" class="btn btn-primary">
+            <a href="/configs/browse/create/{{ env_id }}?path={{ current_path }}" class="btn btn-primary">
                 <i class="fas fa-plus"></i> 创建配置
             </a>
             <a href="/configs/sync/{{ env_id }}?path={{ current_path }}" class="btn btn-success sync-btn">
@@ -144,7 +144,7 @@
                     <tbody>
                         {% for item in items %}
                         <tr class="directory-item{% if item.is_dir %} clickable-row{% endif %}" {% if item.is_dir
-                            %}data-href="/configs/browse/{{ env_id }}?path={{ item.full_path }}" {% endif %}>
+                            %}data-href="/configs/browse/browse/{{ env_id }}?path={{ item.full_path }}" {% endif %}>
                             <td>
                                 {% if item.is_dir %}
                                 <i class="fas fa-folder text-warning"></i>
@@ -162,16 +162,16 @@
                             </td>
                             <td>
                                 {% if item.is_dir %}
-                                <a href="/configs/browse/{{ env_id }}?path={{ item.full_path }}"
+                                <a href="/configs/browse/browse/{{ env_id }}?path={{ item.full_path }}"
                                     class="btn btn-sm btn-info dir-link">
                                     <i class="fas fa-folder-open"></i> 打开
                                 </a>
                                 {% else %}
                                 {% if item.config_id %}
-                                <a href="/configs/{{ item.config_id }}" class="btn btn-sm btn-info">
+                                <a href="/configs/browse/view/{{ item.config_id }}" class="btn btn-sm btn-info">
                                     <i class="fas fa-eye"></i> 查看
                                 </a>
-                                <a href="/configs/{{ item.config_id }}/edit" class="btn btn-sm btn-primary">
+                                <a href="/configs/browse/view/{{ item.config_id }}/edit" class="btn btn-sm btn-primary">
                                     <i class="fas fa-edit"></i> 编辑
                                 </a>
                                 {% else %}
@@ -227,7 +227,7 @@
             // 显示加载中弹窗
             showAlert.syncConfig.start();
 
-            const response = await fetch('/configs/sync_file/{{ env_id }}', {
+            const response = await fetch('/configs/sync/file/{{ env_id }}', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

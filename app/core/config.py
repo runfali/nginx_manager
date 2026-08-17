@@ -8,7 +8,7 @@ load_dotenv()
 
 
 class Settings(BaseSettings):
-    # 数据库配置
+    # 数据库配置（请在 .env 中设置实际连接串）
     DATABASE_URL: str = os.getenv(
         "DATABASE_URL", "mysql+pymysql://user:password@localhost:3306/nginx_manager"
     )

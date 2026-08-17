@@ -3,7 +3,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 import os
+import logging
 from pathlib import Path
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.FileHandler("app.log"), logging.StreamHandler()],
+)
 
 from app.core.config import settings
 from app.core.database import engine, Base, get_db
@@ -36,9 +43,9 @@ app.include_router(auth.router, prefix="/auth", tags=["认证"])
 app.include_router(users.router, prefix="/users", tags=["用户管理"])
 app.include_router(environments.router, prefix="/environments", tags=["环境管理"])
 app.include_router(dashboard.router, prefix="/dashboard", tags=["仪表盘"])
-app.include_router(directory.router, prefix="/configs", tags=["目录浏览"])
-app.include_router(sync.router, prefix="/configs", tags=["配置同步"])
-app.include_router(operations.router, prefix="/configs", tags=["操作管理"])
+app.include_router(directory.router, prefix="/configs/browse", tags=["目录浏览"])
+app.include_router(sync.router, prefix="/configs/sync", tags=["配置同步"])
+app.include_router(operations.router, prefix="/configs/ops", tags=["操作管理"])
 # 确保具体路径的路由在参数路径的路由之前注册
 app.include_router(configs.router, prefix="/configs", tags=["配置管理"])
 app.include_router(api.router)
@@ -52,7 +59,10 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    # 应用关闭时清理资源
+    from app.services.ssh_pool import connection_pool, SSHConnection
+
+    connection_pool.close_all()
+    SSHConnection._cleanup_all_temp_files()
     engine.dispose()
 
 

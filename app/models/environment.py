@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, text
 from sqlalchemy.sql import func
 from app.core.database import Base
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
 class Environment(Base):
@@ -20,8 +20,14 @@ class Environment(Base):
         String(255), default="/etc/nginx"
     )  # Nginx安装路径
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)  # 是否激活
+    configs = relationship("NginxConfig", back_populates="env")
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     def __repr__(self):
         return f"<Environment {self.name}>"
+
+    @staticmethod
+    def filter_prd(envs: list) -> list:
+        return [e for e in envs if "PRD" not in e.name.upper()]

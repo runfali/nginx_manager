@@ -2,7 +2,20 @@ from typing import Optional, Tuple, Dict, Any
 import paramiko
 import tempfile
 import os
+from fastapi import HTTPException
 from app.services.ssh_pool import connection_pool, SSHConnection
+
+
+def read_sftp_file_multi_encoding(sftp: paramiko.SFTPClient, file_path: str) -> str:
+    encodings = ["utf-8", "gbk", "gb2312", "latin1"]
+    for encoding in encodings:
+        try:
+            with sftp.open(file_path, "r") as f:
+                return f.read().decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    with sftp.open(file_path, "rb") as f:
+        return f.read().decode("latin1")
 
 
 class SSHUtils:
@@ -42,6 +55,25 @@ class SSHUtils:
         )
 
         return connection, connection.ssh_client
+
+    @staticmethod
+    def get_ssh_or_fail(
+        hostname: str,
+        port: int,
+        username: str,
+        private_key_content: Optional[str] = None,
+        private_key_path: Optional[str] = None,
+    ) -> paramiko.SSHClient:
+        connection = connection_pool.get_connection(
+            hostname=hostname,
+            port=port,
+            username=username,
+            private_key_content=private_key_content,
+            private_key_path=private_key_path,
+        )
+        if connection.ssh_client is None:
+            raise HTTPException(status_code=500, detail="SSH连接失败")
+        return connection.ssh_client
 
     @staticmethod
     def execute_command(
@@ -250,6 +282,80 @@ class SSHUtils:
         sftp_client = ssh_client.open_sftp()
         connection.sftp_client = sftp_client
         return sftp_client
+
+    @staticmethod
+    def upload_file(
+        connection: SSHConnection,
+        ssh_client: paramiko.SSHClient,
+        local_content: str,
+        remote_path: str,
+        mode: int = 0o644,
+    ) -> None:
+        """上传文件内容到远程服务器"""
+        if not ssh_client:
+            raise RuntimeError("SSH未连接")
+
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", delete=False) as temp_file:
+                temp_file.write(local_content)
+                temp_path = temp_file.name
+
+            sftp = SSHUtils.get_sftp_client(connection, ssh_client)
+            sftp.put(temp_path, remote_path)
+            sftp.chmod(remote_path, mode)
+        except Exception as e:
+            raise RuntimeError(f"文件上传失败: {str(e)}") from e
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except Exception:
+                    pass
+
+    @staticmethod
+    def download_file(
+        connection: SSHConnection,
+        ssh_client: paramiko.SSHClient,
+        remote_path: str,
+    ) -> str:
+        """从远程服务器下载文件内容"""
+        if not ssh_client:
+            raise RuntimeError("SSH未连接")
+
+        temp_path = None
+        try:
+            sftp = SSHUtils.get_sftp_client(connection, ssh_client)
+
+            temp_file = tempfile.NamedTemporaryFile(delete=False)
+            temp_path = temp_file.name
+            temp_file.close()
+
+            sftp.get(remote_path, temp_path)
+
+            content = ""
+            encodings = ["utf-8", "gbk", "gb2312", "latin1"]
+            for encoding in encodings:
+                try:
+                    with open(temp_path, "r", encoding=encoding) as f:
+                        content = f.read()
+                    break
+                except UnicodeDecodeError:
+                    continue
+
+            if not content:
+                with open(temp_path, "rb") as f:
+                    content = f.read().decode("latin1")
+
+            return content
+        except Exception as e:
+            raise RuntimeError(f"文件下载失败: {str(e)}") from e
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except Exception:
+                    pass
 
     @staticmethod
     def with_ssh_connection(

@@ -4,16 +4,14 @@
 
 {% block content %}
 <div class="container">
-    <div class="row mb-4">
-        <div class="col">
-            <h2>配置详情</h2>
-        </div>
-        <div class="col text-end">
-            <a href="/configs/{{ config.id }}/edit" class="btn btn-primary">
-                <i class="fas fa-edit"></i> 编辑配置
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0" style="font-size: 1.5rem; font-weight: 700;">配置详情</h2>
+        <div>
+            <a href="/configs/browse/view/{{ config.id }}/edit" class="btn btn-primary">
+                <i class="fas fa-edit me-1"></i> 返回编辑
             </a>
-            <button type="button" class="btn btn-danger" onclick="deleteConfig()">
-                <i class="fas fa-trash"></i> 删除配置
+            <button type="button" class="btn btn-danger ms-2" onclick="deleteConfig()">
+                <i class="fas fa-trash me-1"></i> 删除配置
             </button>
         </div>
     </div>
@@ -29,18 +27,30 @@
             <h5 class="card-title mb-0">基本信息</h5>
         </div>
         <div class="card-body">
-            <div class="row">
-                <div class="col-md-6">
-                    <p><strong>配置名称：</strong>{{ config.name }}</p>
-                    <p><strong>所属环境：</strong>{{ config.environment }}</p>
-                    <p><strong>服务器IP：</strong>{{ config.server_ip }}</p>
+            <div class="row g-4">
+                <div class="col-sm-6 col-lg-4">
+                    <div class="info-label">配置名称</div>
+                    <div class="info-value">{{ config.name }}</div>
                 </div>
-                <div class="col-md-6">
-                    <p><strong>文件路径：</strong>{{ config.file_path }}</p>
-                    <p><strong>创建时间：</strong>{{ config.created_at.strftime('%Y-%m-%d %H:%M:%S') if config.created_at
-                        else '未记录' }}</p>
-                    <p><strong>最后更新：</strong>{{ config.updated_at.strftime('%Y-%m-%d %H:%M:%S') if config.updated_at
-                        else '未更新' }}</p>
+                <div class="col-sm-6 col-lg-4">
+                    <div class="info-label">所属环境</div>
+                    <div class="info-value">{{ config.env.name if config.env else "N/A" }}</div>
+                </div>
+                <div class="col-sm-6 col-lg-4">
+                    <div class="info-label">服务器IP</div>
+                    <div class="info-value">{{ config.server_ip }}</div>
+                </div>
+                <div class="col-sm-6 col-lg-4">
+                    <div class="info-label">文件路径</div>
+                    <div class="info-value">{{ config.file_path }}</div>
+                </div>
+                <div class="col-sm-6 col-lg-4">
+                    <div class="info-label">创建时间</div>
+                    <div class="info-value">{{ config.created_at.strftime('%Y-%m-%d %H:%M:%S') if config.created_at else '未记录' }}</div>
+                </div>
+                <div class="col-sm-6 col-lg-4">
+                    <div class="info-label">最后更新</div>
+                    <div class="info-value">{{ config.updated_at.strftime('%Y-%m-%d %H:%M:%S') if config.updated_at else '未更新' }}</div>
                 </div>
             </div>
         </div>
@@ -49,21 +59,23 @@
     <div class="card mb-4">
         <div class="card-header">
             <h5 class="card-title mb-0">配置内容</h5>
+            <span class="badge bg-light text-muted" id="lineCount"></span>
         </div>
-        <div class="card-body">
-            <textarea id="editor" class="form-control" readonly>{{ config.content }}</textarea>
+        <div class="card-body p-0">
+            <textarea id="editor" readonly>{{ config.content }}</textarea>
         </div>
     </div>
 
-    <div class="row mb-4">
-        <div class="col">
-            <button type="button" class="btn btn-success" onclick="testConfig()">
-                <i class="fas fa-check-circle"></i> 测试配置
-            </button>
-            <button type="button" class="btn btn-warning" onclick="reloadConfig()">
-                <i class="fas fa-sync"></i> 重载配置
-            </button>
-        </div>
+    <div class="mb-4">
+        <button type="button" class="btn btn-success me-2" onclick="testConfig()">
+            <i class="fas fa-check-circle me-1"></i> 测试配置
+        </button>
+        <button type="button" class="btn btn-warning me-2" onclick="reloadConfig()">
+            <i class="fas fa-sync me-1"></i> 重载配置
+        </button>
+        <a href="/configs/browse/view/{{ config.id }}/edit" class="btn btn-primary">
+            <i class="fas fa-edit me-1"></i> 编辑配置
+        </a>
     </div>
 </div>
 
@@ -74,21 +86,31 @@
 <!-- CodeMirror JS -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/nginx/nginx.min.js"></script>
+<!-- CodeMirror Search Addon -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/dialog/dialog.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/search/search.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/search/searchcursor.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/dialog/dialog.min.js"></script>
 
 <script>
     // 初始化CodeMirror编辑器
     var editor = CodeMirror.fromTextArea(document.getElementById("editor"), {
         mode: "nginx",
-        theme: "monokai",
+        theme: "base16-light",
         lineNumbers: true,
-        readOnly: true
+        readOnly: true,
+        extraKeys: {
+            "Ctrl-F": "findPersistent",
+            "Cmd-F": "findPersistent"
+        }
     });
+    document.getElementById('lineCount').textContent = editor.lineCount() + ' 行';
 
     // 测试配置
     async function testConfig() {
         try {
             showAlert.testConfig.start();
-            const response = await fetch('/configs/{{ config.id }}/test', {
+            const response = await fetch('/configs/browse/view/{{ config.id }}/test', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -105,26 +127,41 @@
         }
     }
 
-    // 重载配置
+    // 重载配置（两步：先测试，确认后执行）
     async function reloadConfig() {
-        const result = await showAlert.confirm('重载配置', '确定要重载配置吗？这将影响正在运行的服务。');
-        if (!result.isConfirmed) {
-            return;
-        }
-
         try {
             showAlert.reloadConfig.start();
-            const response = await fetch('/configs/{{ config.id }}/reload', {
+            const testResponse = await fetch('/configs/browse/view/{{ config.id }}/reload-test', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 }
             });
-            const result = await response.json();
-            if (result.success) {
+            const testResult = await testResponse.json();
+            if (!testResult.success) {
+                showAlert.reloadConfig.error(testResult.message);
+                return;
+            }
+
+            const confirmResult = await showAlert.confirm(
+                '确认重载',
+                '配置测试通过，是否确认重载Nginx？'
+            );
+            if (!confirmResult.isConfirmed) {
+                return;
+            }
+
+            const execResponse = await fetch('/configs/browse/view/{{ config.id }}/reload-exec', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            const execResult = await execResponse.json();
+            if (execResult.success) {
                 showAlert.reloadConfig.success();
             } else {
-                showAlert.reloadConfig.error(result.message);
+                showAlert.reloadConfig.error(execResult.message);
             }
         } catch (error) {
             showAlert.reloadConfig.error(error.message);
@@ -164,7 +201,7 @@
                 }
             });
 
-            const response = await fetch('/configs/{{ config.id }}/delete', {
+            const response = await fetch('/configs/ops/{{ config.id }}/delete', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

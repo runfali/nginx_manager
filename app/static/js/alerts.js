@@ -14,7 +14,13 @@ const showAlert = {
             text: text,
             icon: 'success',
             confirmButtonText: '确定',
-            confirmButtonColor: '#28a745'
+            confirmButtonColor: '#10b981',
+            customClass: {
+                popup: 'swal-popup-custom',
+                confirmButton: 'swal-confirm-btn',
+                title: 'swal-title-custom',
+                htmlContainer: 'swal-content-custom'
+            }
         });
     },
 
@@ -25,7 +31,13 @@ const showAlert = {
             text: text,
             icon: 'error',
             confirmButtonText: '确定',
-            confirmButtonColor: '#dc3545'
+            confirmButtonColor: '#ef4444',
+            customClass: {
+                popup: 'swal-popup-custom',
+                confirmButton: 'swal-confirm-btn',
+                title: 'swal-title-custom',
+                htmlContainer: 'swal-content-custom'
+            }
         });
     },
 
@@ -38,8 +50,15 @@ const showAlert = {
             showCancelButton: true,
             confirmButtonText: '确定',
             cancelButtonText: '取消',
-            confirmButtonColor: '#3085d6',
-            cancelButtonColor: '#6c757d'
+            confirmButtonColor: '#2563eb',
+            cancelButtonColor: '#64748b',
+            customClass: {
+                popup: 'swal-popup-custom',
+                confirmButton: 'swal-confirm-btn',
+                cancelButton: 'swal-cancel-btn',
+                title: 'swal-title-custom',
+                htmlContainer: 'swal-content-custom'
+            }
         });
     },
 

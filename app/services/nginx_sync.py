@@ -1,13 +1,15 @@
 from typing import Dict, Optional, Any
 import os
-import paramiko
-import tempfile
+import logging
 from sqlalchemy.orm import Session
 
 from app.models.environment import Environment
 from app.models.nginx_config import NginxConfig
 from app.models.user import User
-from app.services.ssh_utils import SSHUtils
+from app.core.security import decrypt_private_key
+from app.services.ssh_utils import SSHUtils, read_sftp_file_multi_encoding
+
+logger = logging.getLogger(__name__)
 
 
 async def sync_nginx_configs(
@@ -39,18 +41,15 @@ async def sync_nginx_configs(
     ssh = None
     sftp = None
     try:
-        # 使用SSH连接池获取连接
-        # 如果用户设置了私钥，使用用户私钥；否则使用默认私钥路径
         connection, ssh = SSHUtils.get_ssh_connection(
             hostname=env.server_ip,
             port=env.ssh_port,
             username="root",
             private_key_content=(
-                current_user.ssh_private_key if current_user.ssh_private_key else None
+                decrypt_private_key(current_user.ssh_private_key) if current_user.ssh_private_key else None
             ),
         )
 
-        # 获取指定目录下的Nginx配置文件列表（包括软链接目录）
         if ssh is None:
             return {"success": False, "message": "SSH连接失败"}
 
@@ -76,26 +75,7 @@ async def sync_nginx_configs(
                 continue
 
             try:
-                # 读取远程文件内容，尝试多种编码方式
-                content = None
-                encodings = ["utf-8", "gbk", "gb2312", "latin1"]
-
-                # 先尝试不同的编码
-                for encoding in encodings:
-                    try:
-                        with sftp.open(file_path, "r") as f:
-                            content = f.read().decode(encoding)
-                        break  # 如果成功解码，跳出循环
-                    except UnicodeDecodeError:
-                        continue
-
-                # 如果所有编码都失败，使用二进制模式读取并使用latin1编码（不会失败）
-                if content is None:
-                    with sftp.open(file_path, "rb") as f:
-                        binary_content = f.read()
-                        content = binary_content.decode(
-                            "latin1"
-                        )  # latin1可以处理任何字节
+                content = read_sftp_file_multi_encoding(sftp, file_path)
 
                 name = os.path.basename(file_path)
 
@@ -103,7 +83,7 @@ async def sync_nginx_configs(
                 existing_config = (
                     db.query(NginxConfig)
                     .filter(
-                        NginxConfig.environment == env.name,
+                        NginxConfig.environment == env.id,
                         NginxConfig.file_path == file_path,
                     )
                     .first()
@@ -118,7 +98,7 @@ async def sync_nginx_configs(
                     # 创建新配置
                     new_config = NginxConfig(
                         name=name,
-                        environment=env.name,
+                        environment=env.id,
                         server_ip=env.server_ip,
                         file_path=file_path,
                         content=content,
@@ -128,14 +108,13 @@ async def sync_nginx_configs(
                     db.add(new_config)
                 synced_count += 1
             except Exception as file_error:
-                # 记录单个文件处理错误但继续处理其他文件
-                print(f"处理文件 {file_path} 时出错: {str(file_error)}")
+                logger.exception("处理文件 %s 时出错", file_path)
                 continue
 
         # 检查数据库中的配置文件是否在服务器上仍然存在
         # 获取当前环境下数据库中所有的配置文件记录
         db_configs = (
-            db.query(NginxConfig).filter(NginxConfig.environment == env.name).all()
+            db.query(NginxConfig).filter(NginxConfig.environment == env.id).all()
         )
 
         # 创建一个集合，包含所有在服务器上找到的配置文件路径
@@ -199,41 +178,33 @@ async def sync_single_nginx_config(
     ssh = None
     sftp = None
     try:
-        # 使用SSH连接池获取连接
-        # 如果用户设置了私钥，使用用户私钥；否则使用默认私钥路径
         connection, ssh = SSHUtils.get_ssh_connection(
             hostname=env.server_ip,
             port=env.ssh_port,
             username="root",
             private_key_content=(
-                current_user.ssh_private_key if current_user.ssh_private_key else None
+                decrypt_private_key(current_user.ssh_private_key) if current_user.ssh_private_key else None
             ),
         )
 
-        # 检查文件是否存在
         if ssh is None:
             return {"success": False, "message": "SSH连接失败"}
 
-        if ssh is None:
-            return {"success": False, "message": "SSH连接失败"}
-
-        stdin, stdout, stderr = ssh.exec_command(
-            f"test -f {file_path} && echo 'exists'"
+        exit_code, output, error = SSHUtils.execute_command(
+            ssh, f"test -f {file_path} && echo 'exists'"
         )
-        file_exists = bool(stdout.read().decode().strip())
+        file_exists = bool(output.strip())
 
-        # 检查文件是否存在于数据库中
         name = os.path.basename(file_path)
         existing_config = (
             db.query(NginxConfig)
             .filter(
-                NginxConfig.environment == env.name,
+                NginxConfig.environment == env.id,
                 NginxConfig.file_path == file_path,
             )
             .first()
         )
 
-        # 如果文件在服务器上不存在但在数据库中存在，则删除数据库记录
         if not file_exists and existing_config:
             db.delete(existing_config)
             db.commit()
@@ -242,73 +213,45 @@ async def sync_single_nginx_config(
                 "message": f"文件 {file_path} 已从服务器删除，数据库记录已同步删除",
             }
 
-        # 如果文件在服务器上不存在且数据库中也不存在，返回不存在消息
         if not file_exists:
             return {"success": False, "message": f"文件 {file_path} 不存在"}
 
-        # 读取文件内容
-        if ssh is None:
-            return {"success": False, "message": "SSH连接失败"}
+        sftp = SSHUtils.get_sftp_client(connection, ssh)
 
-        if ssh is None:
-            return {"success": False, "message": "SSH连接失败"}
+        content = read_sftp_file_multi_encoding(sftp, file_path)
 
-        sftp = ssh.open_sftp()
-        try:
-            # 读取远程文件内容，尝试多种编码方式
-            content = None
-            encodings = ["utf-8", "gbk", "gb2312", "latin1"]
+        name = os.path.basename(file_path)
 
-            # 先尝试不同的编码
-            for encoding in encodings:
-                try:
-                    with sftp.open(file_path, "r") as f:
-                        content = f.read().decode(encoding)
-                    break  # 如果成功解码，跳出循环
-                except UnicodeDecodeError:
-                    continue
-
-            # 如果所有编码都失败，使用二进制模式读取并使用latin1编码（不会失败）
-            if content is None:
-                with sftp.open(file_path, "rb") as f:
-                    binary_content = f.read()
-                    content = binary_content.decode("latin1")  # latin1可以处理任何字节
-
-            name = os.path.basename(file_path)
-
-            # 检查配置是否已存在
-            existing_config = (
-                db.query(NginxConfig)
-                .filter(
-                    NginxConfig.name == name,
-                    NginxConfig.environment == env.name,
-                    NginxConfig.file_path == file_path,
-                )
-                .first()
+        # 检查配置是否已存在
+        existing_config = (
+            db.query(NginxConfig)
+            .filter(
+                NginxConfig.name == name,
+                NginxConfig.environment == env.id,
+                NginxConfig.file_path == file_path,
             )
+            .first()
+        )
 
-            if existing_config:
-                # 更新现有配置
-                existing_config.content = content
-                existing_config.updated_by = current_user.id
-            else:
-                # 创建新配置
-                new_config = NginxConfig(
-                    name=name,
-                    environment=env.name,
-                    server_ip=env.server_ip,
-                    file_path=file_path,
-                    content=content,
-                    created_by=current_user.id,
-                    updated_by=current_user.id,
-                )
-                db.add(new_config)
+        if existing_config:
+            # 更新现有配置
+            existing_config.content = content
+            existing_config.updated_by = current_user.id
+        else:
+            # 创建新配置
+            new_config = NginxConfig(
+                name=name,
+                environment=env.id,
+                server_ip=env.server_ip,
+                file_path=file_path,
+                content=content,
+                created_by=current_user.id,
+                updated_by=current_user.id,
+            )
+            db.add(new_config)
 
-            db.commit()
-            return {"success": True, "message": f"成功同步配置文件 {name}"}
-
-        except Exception as e:
-            return {"success": False, "message": f"读取文件失败: {str(e)}"}
+        db.commit()
+        return {"success": True, "message": f"成功同步配置文件 {name}"}
 
     except Exception as e:
         # 回滚数据库事务

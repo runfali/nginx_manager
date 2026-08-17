@@ -13,7 +13,7 @@ router = APIRouter()
 
 
 # 同步指定目录下的配置文件 - 所有已登录用户可访问
-@router.post("/sync/{env_id}")
+@router.post("/{env_id}")
 async def sync_configs(
     env_id: int,
     path: Optional[str] = None,
@@ -37,7 +37,7 @@ async def sync_configs(
 
 
 # 同步单个配置文件 - 所有已登录用户可访问
-@router.post("/sync_file/{env_id}")
+@router.post("/file/{env_id}")
 async def sync_single_file(
     env_id: int,
     file_path: str,

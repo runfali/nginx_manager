@@ -24,7 +24,7 @@ async def environments_page(
 
     # 如果不是超级用户，过滤掉PRD环境
     if not current_user.is_superuser:
-        environments = [env for env in environments if "PRD" not in env.name.lower()]
+        environments = Environment.filter_prd(environments)
 
     return templates.TemplateResponse(
         "environments.html",

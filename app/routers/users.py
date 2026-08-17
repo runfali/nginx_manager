@@ -4,7 +4,11 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from app.core.database import get_db
-from app.core.security import get_password_hash, verify_password
+from app.core.security import (
+    get_password_hash,
+    verify_password,
+    encrypt_private_key,
+)
 from app.models.user import User
 from app.routers.auth import get_current_active_user, get_current_superuser
 from app.core.templates import templates
@@ -70,7 +74,7 @@ async def create_user(
         email=email,
         hashed_password=hashed_password,
         is_superuser=is_superuser,
-        ssh_private_key=ssh_private_key,
+        ssh_private_key=encrypt_private_key(ssh_private_key),
     )
 
     db.add(new_user)
@@ -132,7 +136,7 @@ async def update_user(
     user.email = email
     user.is_active = is_active
     user.is_superuser = is_superuser
-    user.ssh_private_key = ssh_private_key
+    user.ssh_private_key = encrypt_private_key(ssh_private_key)
 
     # 如果提供了新密码，则更新密码
     if password:
@@ -165,17 +169,17 @@ async def delete_user(
     return RedirectResponse(url="/users", status_code=status.HTTP_302_FOUND)
 
 
-# 个人资料页面 - 仅超级管理员可访问
+# 个人资料页面 - 已登录用户可访问
 @router.get("/profile", response_class=HTMLResponse)
 async def profile_page(
-    request: Request, current_user: User = Depends(get_current_superuser)
+    request: Request, current_user: User = Depends(get_current_active_user)
 ):
     return templates.TemplateResponse(
         "profile.html", {"request": request, "current_user": current_user}
     )
 
 
-# 更新个人资料 - 仅超级管理员可访问
+# 更新个人资料 - 已登录用户可访问
 @router.post("/profile")
 async def update_profile(
     request: Request,
@@ -183,7 +187,7 @@ async def update_profile(
     current_password: Optional[str] = Form(None),
     new_password: Optional[str] = Form(None),
     ssh_private_key: Optional[str] = Form(None),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     # 检查邮箱是否已被其他用户使用
@@ -211,7 +215,7 @@ async def update_profile(
 
     # 更新用户信息
     current_user.email = email
-    current_user.ssh_private_key = ssh_private_key
+    current_user.ssh_private_key = encrypt_private_key(ssh_private_key)
 
     db.commit()
     db.refresh(current_user)

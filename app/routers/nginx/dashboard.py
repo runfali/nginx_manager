@@ -24,7 +24,7 @@ async def dashboard_page(
 
     # 如果不是超级用户，过滤掉PRD环境
     if not current_user.is_superuser:
-        environments = [env for env in environments if "PRD" not in env.name.upper()]
+        environments = Environment.filter_prd(environments)
 
     # 获取最近更新的配置文件
     recent_configs = (
@@ -36,7 +36,7 @@ async def dashboard_page(
         recent_configs = [
             config
             for config in recent_configs
-            if "PRD" not in config.environment.upper()
+            if config.env and "PRD" not in config.env.name.upper()
         ]
 
     return templates.TemplateResponse(

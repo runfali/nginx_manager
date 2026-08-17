@@ -3,10 +3,14 @@ import paramiko
 import tempfile
 import os
 import time
+import atexit
 
 
 class SSHConnection:
     """SSH连接类，用于存储SSH连接信息"""
+
+    _registered_temp_paths = set()
+    _atexit_registered = False
 
     def __init__(
         self,
@@ -26,8 +30,21 @@ class SSHConnection:
         self.last_used: float = time.time()
         self._temp_key_path: Optional[str] = None
 
-        # 创建SSH连接
+        if not SSHConnection._atexit_registered:
+            atexit.register(SSHConnection._cleanup_all_temp_files)
+            SSHConnection._atexit_registered = True
+
         self._connect()
+
+    @classmethod
+    def _cleanup_all_temp_files(cls):
+        for path in list(cls._registered_temp_paths):
+            if os.path.exists(path):
+                try:
+                    os.unlink(path)
+                except Exception:
+                    pass
+        cls._registered_temp_paths.clear()
 
     def _connect(self) -> None:
         """创建SSH连接"""
@@ -44,6 +61,7 @@ class SSHConnection:
                 with tempfile.NamedTemporaryFile(mode="w", delete=False) as temp_file:
                     temp_file.write(self.private_key_content)
                     self._temp_key_path = temp_file.name
+                    SSHConnection._registered_temp_paths.add(self._temp_key_path)
                     key_filename = self._temp_key_path
             # 如果提供了私钥路径，直接使用
             elif self.private_key_path and os.path.exists(self.private_key_path):
@@ -72,7 +90,7 @@ class SSHConnection:
         if self.sftp_client:
             try:
                 self.sftp_client.close()
-            except:
+            except Exception:
                 pass
             self.sftp_client = None
 
@@ -80,7 +98,7 @@ class SSHConnection:
         if self.ssh_client:
             try:
                 self.ssh_client.close()
-            except:
+            except Exception:
                 pass
             self.ssh_client = None
 
@@ -88,8 +106,9 @@ class SSHConnection:
         if self._temp_key_path and os.path.exists(self._temp_key_path):
             try:
                 os.unlink(self._temp_key_path)
-            except:
+            except Exception:
                 pass
+            SSHConnection._registered_temp_paths.discard(self._temp_key_path)
             self._temp_key_path = None
 
 
@@ -121,9 +140,15 @@ class SSHConnectionPool:
         # 检查连接是否存在且有效
         if connection_key in self.connections:
             connection = self.connections[connection_key]
-            # 更新最后使用时间
-            connection.last_used = time.time()
-            return connection
+            if connection.ssh_client:
+                try:
+                    connection.ssh_client.exec_command("echo ok", timeout=5)
+                except Exception:
+                    connection.close()
+                    del self.connections[connection_key]
+                else:
+                    connection.last_used = time.time()
+                    return connection
 
         # 如果连接池已满，清理最久未使用的连接
         if len(self.connections) >= self.max_connections:

@@ -42,14 +42,14 @@
 
 .success-animation {
     animation: successPulse 0.5s ease-in-out;
-    border-color: #28a745 !important;
-    box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25) !important;
+    border-color: #10b981 !important;
+    box-shadow: 0 0 0 0.2rem rgba(16, 185, 129, 0.25) !important;
 }
 
 .error-animation {
     animation: errorShake 0.5s ease-in-out;
-    border-color: #dc3545 !important;
-    box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25) !important;
+    border-color: #ef4444 !important;
+    box-shadow: 0 0 0 0.2rem rgba(239, 68, 68, 0.25) !important;
 }
 
 .loading {
