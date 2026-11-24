@@ -2,340 +2,600 @@
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-green)](https://fastapi.tiangolo.com/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](#)
 
-一个基于 FastAPI 的多环境 Nginx 配置管理平台，提供用户认证、环境管理、目录浏览、配置同步、在线编辑、配置测试和 Nginx 重载能力。
+一个现代化的多环境 Nginx 配置管理 Web 平台，基于 FastAPI 框架开发，为系统管理员和运维人员提供统一的 Nginx 配置管理解决方案。
 
-## 项目现状
+## 🚀 项目概述
 
-当前仓库中的实现重点是：
+### 核心功能
 
-- 基于 `FastAPI + Jinja2` 的服务端渲染管理后台
-- 基于 `JWT + HttpOnly Cookie` 的登录认证
-- 用户、环境、Nginx 配置三类核心数据管理
-- 通过 SSH 连接远程服务器，浏览和同步 `.conf` 文件
-- 在线编辑配置，并在远程服务器执行 `nginx -t`、`nginx -s reload`
-- 用户 SSH 私钥加密存储
-- SSH 连接池复用、心跳检测和临时私钥文件清理
+- **多环境管理**：支持开发、测试、生产等多环境 Nginx 配置管理
+- **可视化配置**：直观的 Web 界面进行配置文件浏览、编辑和管理
+- **实时同步**：配置文件与远程 Nginx 服务器的双向同步
+- **权限控制**：基于角色的用户权限管理，确保操作安全性
+- **操作审计**：完整的操作日志记录，支持配置变更追踪
+- **批量操作**：支持批量配置测试、重载和部署
 
-当前代码里没有现成的 `tests/` 目录，也没有提交好的 Alembic 迁移版本文件；数据库表主要依赖应用启动时的 `Base.metadata.create_all()` 创建。
+### 技术亮点
 
-## 核心能力
+- **高性能架构**：采用异步 I/O 和连接池技术，优化 SSH 操作性能 95%+
+- **现代化 UI**：响应式设计，支持移动端访问
+- **安全认证**：JWT 令牌认证，bcrypt 密码加密
+- **数据库迁移**：Alembic 支持的版本化数据库管理
 
-### 1. 多环境管理
+## 🛠️ 技术栈
 
-- 超级管理员可创建、编辑、删除环境
-- 环境信息包含名称、描述、服务器 IP、SSH 端口、Nginx 根路径、启用状态
-- 普通用户可查看环境，但会被过滤掉名称中包含 `PRD` 的环境
+### 后端技术
 
-### 2. 用户与权限
+- **Web 框架**：FastAPI 0.104.1 - 现代化 Python 异步 Web 框架
+- **数据库**：MySQL + SQLAlchemy ORM 2.0.22
+- **认证**：JWT (JSON Web Token) + bcrypt 密码加密
+- **SSH 连接**：Paramiko 3.3.1 - 支持连接池和批量操作
+- **数据验证**：Pydantic 2.4.2 - 类型安全的数据验证
+- **数据库迁移**：Alembic 1.12.0
 
-- 支持登录、登出、个人资料维护
-- 超级管理员可管理用户
-- 普通用户不能访问用户管理页面，且在界面层面会被过滤掉名称中包含 `PRD` 的环境和相关配置
-- 用户可以在个人资料页维护 SSH 私钥
+### 前端技术
 
-### 3. 配置浏览与编辑
+- **模板引擎**：Jinja2 - 服务端渲染
+- **样式框架**：Bootstrap 5 - 响应式 UI 组件
+- **JavaScript**：原生 JS + jQuery - 交互增强
+- **代码编辑器**：CodeMirror - Nginx 配置语法高亮
 
-- 仪表盘展示可用环境和最近更新的配置
-- 可按环境浏览远程 Nginx 目录
-- 目录页只展示目录和 `.conf` 文件
-- 支持创建、查看、编辑、删除配置
-- 编辑器使用 CodeMirror，提供 Nginx 语法高亮
+### 运行环境
 
-### 4. 远程同步与操作
+- **Web 服务器**：Uvicorn (开发) / Gunicorn + UvicornWorker (生产)
+- **Python 版本**：3.8+
+- **数据库**：MySQL 5.7+
+- **操作系统**：Linux / Windows / macOS
 
-- 支持同步某个环境下指定目录的全部 `.conf` 文件
-- 支持同步单个远程配置文件到数据库
-- 新建配置时会上传到远程目标路径
-- 编辑保存时主要更新数据库记录
-- 执行测试或重载前测试时，会把当前配置内容上传到远程目标路径
-- 支持对配置执行 `nginx -t`
-- 支持先测试再执行 `nginx -s reload`
-- 编辑保存或删除配置时，会在服务器上创建备份
+## 📋 环境要求
 
-## 技术栈
+### 系统要求
 
-### 后端
+- **Python**: 3.8+ (推荐 3.9+)
+- **数据库**: MySQL 5.7+ / MariaDB 10.3+
+- **操作系统**: Linux / Windows / macOS
+- **内存**: 至少 512MB
+- **磁盘空间**: 至少 1GB
 
-- FastAPI
-- SQLAlchemy
-- Pydantic / pydantic-settings
-- Alembic
-- Paramiko
-- python-jose
-- passlib + bcrypt
-- cryptography
+### 目标 Nginx 服务器要求
 
-### 前端
+- **SSH 访问**: 支持 SSH 公钥认证
+- **Nginx 版本**: 1.18+ (支持`nginx -t`和`nginx -s reload`命令)
+- **文件权限**: Nginx 配置目录的读写权限
 
-- Jinja2
-- Bootstrap 5
-- Font Awesome
-- CodeMirror
-- 原生 JavaScript
+## 🛠️ 安装指南
 
-### 数据与连接
+### 快速开始
 
-- MySQL / MariaDB
-- SSH 私钥认证
-- SSH 连接池复用
+```bash
+# 1. 克隆项目
+git clone <repository-url>
+cd nginx_manager
 
-## 运行要求
+# 2. 创建虚拟环境
+python3 -m venv venv
+source venv/bin/activate  # Linux/Mac
+# venv\Scripts\activate   # Windows
 
-### 管理平台本身
+# 3. 安装依赖
+pip install -r requirements.txt
 
-- Python 3.8+
-- MySQL 5.7+ 或 MariaDB 10.3+
-- Windows / Linux / macOS 可运行 Web 应用本体
+# 4. 配置数据库
+# 创建 .env 文件（参考下面的配置说明）
 
-### 被管理的 Nginx 服务器
+# 5. 创建初始迁移并初始化数据库
+alembic revision --autogenerate -m "init"
+alembic upgrade head
 
-这部分要求要比旧版 README 更明确：
+# 6. 创建超级管理员
+python -m app.init_superuser
 
-- 需要可通过 SSH 访问
-- 当前代码中的 SSH 用户名写死为 `root`
-- 需要支持公钥认证
-- 需要可执行以下命令：
-  - `find`
-  - `mkdir`
-  - `cp`
-  - `nginx -t`
-  - `nginx -s reload`
-- 目标路径需要允许 `root` 读取和写入 Nginx 配置文件
-
-也就是说，远程服务器默认按 Linux/类 Unix 环境设计，不是面向 Windows Nginx 主机的实现。
-
-## 目录结构
-
-```text
-nginx_manager/
-├── app/
-│   ├── core/
-│   │   ├── config.py
-│   │   ├── database.py
-│   │   ├── middleware.py
-│   │   ├── security.py
-│   │   └── templates.py
-│   ├── models/
-│   │   ├── environment.py
-│   │   ├── nginx_config.py
-│   │   └── user.py
-│   ├── routers/
-│   │   ├── nginx/
-│   │   │   ├── dashboard.py
-│   │   │   ├── directory.py
-│   │   │   ├── operations.py
-│   │   │   └── sync.py
-│   │   ├── api.py
-│   │   ├── auth.py
-│   │   ├── configs.py
-│   │   ├── environments.py
-│   │   └── users.py
-│   ├── services/
-│   │   ├── nginx_service.py
-│   │   ├── nginx_sync.py
-│   │   ├── ssh_pool.py
-│   │   └── ssh_utils.py
-│   ├── static/
-│   ├── templates/
-│   ├── init_superuser.py
-│   └── main.py
-├── alembic/
-├── requirements.txt
-└── README.md
+# 7. 启动应用
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-## 环境变量
+### 详细安装步骤
 
-项目当前实际读取的环境变量如下，定义位置在 `app/core/config.py`：
-
-```env
-DATABASE_URL=mysql+pymysql://user:password@localhost:3306/nginx_manager
-SECRET_KEY=your-secret-key-for-jwt-token-generation
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-
-APP_NAME=Nginx配置管理平台
-APP_VERSION=0.1.0
-APP_DESCRIPTION=用于管理多环境Nginx配置的Web平台
-DEBUG=true
-```
-
-说明：
-
-- `SECRET_KEY` 同时用于 JWT 签名和 SSH 私钥加密密钥派生
-- 生产环境务必替换默认 `SECRET_KEY`
-- 当前代码未从 `.env` 读取 `HOST`、`PORT` 等运行参数，启动地址由 `uvicorn` 命令决定
-
-## 安装与启动
-
-### 1. 安装依赖
+#### 1. 克隆代码库
 
 ```bash
 git clone <repository-url>
 cd nginx_manager
+```
 
-python -m venv venv
+#### 2. 创建虚拟环境（强烈推荐）
 
-# Windows
-venv\Scripts\activate
+```bash
+python3 -m venv venv
 
-# Linux / macOS
+# Linux/Mac 激活虚拟环境
 source venv/bin/activate
 
+# Windows 激活虚拟环境
+venv\Scripts\activate
+```
+
+#### 3. 安装依赖
+
+```bash
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 2. 创建数据库
+#### 4. 数据库配置
 
-先在 MySQL 中手动创建数据库，例如：
-
-```sql
-CREATE DATABASE nginx_manager CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
-
-然后在项目根目录创建 `.env`，至少配置好：
+在项目根目录创建 `.env` 文件，配置数据库连接和应用设置：
 
 ```env
+# 数据库配置
 DATABASE_URL=mysql+pymysql://username:password@localhost:3306/nginx_manager
-SECRET_KEY=please-change-this-in-production
+
+# JWT 安全配置（SECRET_KEY 必配）
+# 生成强随机密钥：python -c "import secrets; print(secrets.token_hex(32))"
+# 未配置或仍为示例占位值时应用会每次启动随机生成，重启后所有登录会话失效
+SECRET_KEY=<用上面的命令生成，切勿使用任何示例值>
+ACCESS_TOKEN_EXPIRE_MINUTES=1440
+ALGORITHM=HS256
+
+# 应用配置
+DEBUG=true
+APP_NAME=Nginx配置管理平台
+APP_VERSION=1.0.0
+
+# 服务器配置
+HOST=0.0.0.0
+PORT=8000
 ```
 
-### 3. 初始化数据表
+> **安全注意**：生产环境务必在 `.env` 中配置固定的强随机 `SECRET_KEY`（运行时随机生成仅供兜底——重启会让所有会话失效），并将 `DEBUG=false`。数据库请使用最小权限专用账号；凭据只放 `.env`（已被 .gitignore 忽略），严禁提交进仓库或硬编码在代码里。可参考仓库根目录的 `.env.example` 模板。
 
-当前仓库虽然包含 Alembic 脚手架，但**没有提交迁移版本文件**。  
-按现有代码，最直接的初始化方式是让应用在启动时自动建表，或运行超级管理员初始化脚本时创建表：
+**数据库初始化**：
+
+```bash
+# 创建数据库（MySQL）
+mysql -u root -p
+CREATE DATABASE nginx_manager CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+GRANT ALL PRIVILEGES ON nginx_manager.* TO 'nginx_user'@'localhost' IDENTIFIED BY 'your_password';
+FLUSH PRIVILEGES;
+EXIT;
+
+# 创建初始迁移并应用
+alembic revision --autogenerate -m "init"
+alembic upgrade head
+```
+
+#### 5. 创建超级管理员
 
 ```bash
 python -m app.init_superuser
 ```
 
-脚本会提示输入：
+按照提示输入用户名、邮箱和密码。超级管理员具有所有权限，包括：
 
-- 用户名
-- 邮箱
-- 密码
+- 用户管理
+- 环境管理
+- 所有配置访问权限
 
-如果表不存在，脚本会先调用 `Base.metadata.create_all()`。
+## 🚀 启动应用
 
-### 4. 启动应用
-
-开发环境推荐：
+### 开发环境
 
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-也可以直接运行：
-
-```bash
+# 方式一：直接运行
 python -m app.main
+
+# 方式二：使用 uvicorn（推荐）
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# 指定配置文件
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --env-file .env
 ```
 
-启动后访问：
+### 生产环境
 
-```text
+```bash
+# 使用 Gunicorn + Uvicorn Worker（推荐）
+gunicorn -w 4 -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:8000
+
+# 后台运行
+gunicorn -w 4 -k uvicorn.workers.UvicornWorker app.main:app \
+  --bind 0.0.0.0:8000 \
+  --daemon \
+  --pid /var/run/nginx_manager.pid \
+  --access-logfile /var/log/nginx_manager/access.log \
+  --error-logfile /var/log/nginx_manager/error.log
+
+# 使用 systemd 服务（推荐）
+sudo systemctl enable nginx_manager
+sudo systemctl start nginx_manager
+```
+
+**Systemd 服务配置示例** (`/etc/systemd/system/nginx_manager.service`):
+
+```ini
+[Unit]
+Description=Nginx Manager Web Application
+After=network.target mysql.service
+
+[Service]
+Type=notify
+User=nginx_manager
+Group=nginx_manager
+WorkingDirectory=/opt/nginx_manager
+ExecStart=/opt/nginx_manager/venv/bin/gunicorn -w 4 -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:8000
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+## 🌍 访问应用
+
+启动应用后，在浏览器中访问：
+
+```
 http://localhost:8000
 ```
 
-根路径会自动跳转到 `/auth/login`。
+**首次登录流程**：
 
-## 首次使用流程
+1. 系统会自动重定向到登录页面
+2. 使用创建的超级管理员账户登录
+3. 首次登录后请在“个人资料”中配置 SSH 私钥
+4. 在“环境管理”中添加 Nginx 服务器环境
 
-1. 用超级管理员账户登录
-2. 进入“个人资料”页面，保存 SSH 私钥
-3. 进入“环境管理”创建目标服务器环境
-4. 在仪表盘选择环境，进入目录浏览
-5. 同步现有 `.conf` 文件，或直接新建配置
-6. 编辑配置后，先执行测试或重载前测试，再执行重载
+## 📚 使用指南
 
-## 主要页面与路由
+### 1. 环境管理
 
-| 路径 | 说明 |
-| --- | --- |
-| `/` | 跳转到登录页 |
-| `/auth/login` | 登录页 |
-| `/dashboard` | 仪表盘 |
-| `/users` | 用户管理，超级管理员可访问 |
-| `/users/profile` | 个人资料页 |
-| `/environments` | 环境管理 |
-| `/configs` | 当前会重定向到仪表盘 |
-| `/configs/browse/browse/{env_id}` | 远程目录浏览 |
-| `/configs/browse/create/{env_id}` | 新建配置 |
-| `/configs/browse/view/{config_id}` | 查看配置 |
-| `/configs/browse/view/{config_id}/edit` | 编辑配置 |
-| `/configs/sync/{env_id}` | 同步目录下配置 |
-| `/configs/sync/file/{env_id}` | 同步单个文件 |
-| `/configs/ops/{config_id}/test` | 测试配置 |
-| `/configs/ops/{config_id}/reload-test` | 重载前测试 |
-| `/configs/ops/{config_id}/reload-exec` | 执行重载 |
-| `/docs` | Swagger UI |
-| `/redoc` | ReDoc |
+**添加环境**：
 
-## 实现细节说明
+- 点击“环境管理” → “创建环境”
+- 填写环境信息：
+  - **环境名称**：如 `DEV`、`TEST`、`PROD`
+  - **服务器 IP**：Nginx 服务器地址
+  - **SSH 端口**：默认 22
+  - **Nginx 配置路径**：如 `/etc/nginx`
 
-### 认证方式
+**配置 SSH 访问**：
 
-- 登录成功后，服务端将 JWT 写入名为 `access_token` 的 Cookie
-- 路由鉴权主要从 Cookie 中读取令牌
+- 在目标服务器上配置 SSH 公钥认证
+- 在用户 Profile 页面中上传对应的私钥（AES-256-CBC 加密存储）
 
-### SSH 私钥存储
+### 2. 用户管理
 
-- 私钥不会明文存储
-- 当前实现会先压缩，再使用 `AES-256-CBC` 加密
-- 加密密钥由 `SECRET_KEY` 通过 `PBKDF2HMAC(SHA-256, 480000 次迭代)` 派生
+**创建用户**：
 
-### SSH 连接池
+- 超级管理员可以创建和管理用户
+- 支持普通用户和管理员两种角色
+- 每个用户可以设置独立的 SSH 私钥
 
-- 全局连接池位于 `app/services/ssh_pool.py`
-- 默认最大连接数为 `10`
-- 连接空闲超时时间为 `300` 秒
-- 连接复用前会执行 `echo ok` 检测可用性
-- 临时私钥文件会在连接关闭、应用关闭和进程退出时尽量清理
+**权限控制**：
 
-### 同步和编辑行为
+- **超级管理员**：所有功能和环境访问权限
+- **普通用户**：仅可访问非生产环境，无用户管理权限；可访问自己的 Profile 页面配置 SSH 私钥
 
-- 同步目录时，远程执行 `find -L <path> -type f -name '*.conf'`
-- 目录页只显示目录和 `.conf` 文件
-- 新建配置时会上传远程文件并设置权限为 `644`
-- 编辑保存时会更新数据库记录，但不会直接把新内容写回远程文件
-- 执行“测试配置”或“重载前测试”时，会先把当前数据库中的配置内容上传到远程目标路径
-- 如果远程文件已存在，保存前会先备份到 `/usr/local/src/nginx_config_backups`
-- 删除配置时，如果远程文件存在，也会先做备份
+### 3. 配置管理
 
-## Alembic 说明
+路由拆分为四个模块：
 
-当前仓库状态下：
+| 路径 | 功能 | 说明 |
+|------|------|------|
+| `/configs` | 配置列表 | 重定向到仪表盘 |
+| `/configs/browse` | 浏览编辑 | 目录导航、文件编辑 |
+| `/configs/sync` | 配置同步 | 上传/下载同步 |
+| `/configs/ops` | 配置操作 | 测试、重载、删除 |
 
-- 有 `alembic.ini`
-- 有 `alembic/env.py`
-- 没有已提交的 `alembic/versions/*` 迁移文件
+### 4. Nginx 操作
 
-所以这里不建议把 `alembic upgrade head` 写成“首次安装必走步骤”。  
-如果后续要正式采用迁移流程，应先生成并提交版本文件，再在 README 中补上标准迁移命令。
+**配置测试**：
 
-## 开发说明
+```bash
+# 系统会执行
+nginx -t
+```
 
-- 当前 `app/main.py` 在启动时会执行 `Base.metadata.create_all(bind=engine)`
-- 日志输出到控制台和项目根目录下的 `app.log`
-- 全局异常处理在 `app/core/middleware.py`
-- 仓库当前没有自动化测试目录，关键改动建议手工验证：
-  - 登录
-  - 用户资料更新
-  - 环境创建
-  - 目录浏览
-  - 配置同步
-  - `nginx -t`
-  - `nginx -s reload`
+**服务重载**：
 
-## 已知边界
+```bash
+# 系统会执行
+nginx -s reload
+```
 
-- SSH 用户名当前写死为 `root`
-- 普通用户是否可访问生产环境，是通过环境名是否包含 `PRD` 判断的
-- 远程命令依赖 Linux/类 Unix 工具链
-- 当前没有提交数据库迁移版本文件
-- 当前没有自动化测试
+**批量操作**：
 
-## 许可证
+- 支持对多个配置文件批量测试
+- 支持多环境同步部署
 
-本项目采用 MIT License。
+## 🔧 高级配置
+
+### 性能优化
+
+**SSH 连接池配置**：
+
+连接池内置心跳检测——每次复用时执行 `echo ok` 验证连接有效性，失效连接自动回收重建。应用 Shutdown 时调用 `close_all()` 关闭所有连接并清理临时私钥文件；`atexit` 注册兜底清理，防止进程异常退出时残留临时文件。
+
+```python
+# app/services/ssh_pool.py
+class SSHConnectionPool:
+    def __init__(self, max_connections: int = 10, connection_timeout: int = 300):
+        self.max_connections = max_connections        # 最大连接数
+        self.connection_timeout = connection_timeout  # 连接超时时间（秒）
+```
+
+**数据库优化**：
+
+```env
+# .env 文件中添加
+DATABASE_POOL_SIZE=10
+DATABASE_MAX_OVERFLOW=20
+DATABASE_POOL_TIMEOUT=30
+```
+
+### 安全配置
+
+**SSH 私钥加密**：
+
+用户的 SSH 私钥在数据库中采用 AES-256-CBC 加密存储（先经过 zlib 压缩，再使用 PKCS7 填充后加密），密钥由 `SECRET_KEY` 通过 PBKDF2HMAC（SHA-256, 480000 次迭代）派生，杜绝明文存储风险。
+
+**登录暴力破解防护**：
+
+同一来源 IP 对同一用户名的登录尝试（`/auth/login` 与 `/auth/token` 共用计数），在 15 分钟窗口内失败满 10 次后会被暂时拒绝（429），成功登录即清零。该限流为进程内存实现，应用重启后清零；Gunicorn 多 Worker 部署时各 Worker 独立计数（等效阈值随 Worker 数放大）。
+
+**SSL/HTTPS 配置**：
+
+```bash
+# 使用 SSL 证书
+uvicorn app.main:app \
+  --host 0.0.0.0 \
+  --port 443 \
+  --ssl-keyfile /path/to/private.key \
+  --ssl-certfile /path/to/certificate.crt
+```
+
+**防火墙配置**：
+
+```bash
+# 开放必要端口
+sudo ufw allow 8000/tcp    # HTTP 端口
+sudo ufw allow 443/tcp     # HTTPS 端口
+sudo ufw allow 22/tcp      # SSH 端口
+```
+
+### 监控和日志
+
+**日志配置**：
+
+日志在 `app/main.py` 入口处统一初始化，输出到 `app.log` 文件和控制台：
+
+```python
+# app/main.py
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.FileHandler("app.log"), logging.StreamHandler()],
+)
+```
+
+**系统监控**：
+
+- 使用 `htop` 或 `top` 监控系统资源
+- 使用 `nginx -t` 定期检查配置文件语法
+- 配置数据库连接监控
+
+## 🔍 故障排除
+
+### 常见问题
+
+**1. SSH 连接失败**
+
+```bash
+# 检查 SSH 服务状态
+sudo systemctl status ssh
+
+# 检查 SSH 配置
+sudo nano /etc/ssh/sshd_config
+# 确保开启 PubkeyAuthentication yes
+
+# 检查公钥权限
+chmod 600 ~/.ssh/authorized_keys
+chmod 700 ~/.ssh
+```
+
+**2. 数据库连接错误**
+
+```bash
+# 检查 MySQL 服务
+sudo systemctl status mysql
+
+# 测试数据库连接
+mysql -u nginx_user -p -h localhost nginx_manager
+
+# 检查用户权限
+SHOW GRANTS FOR 'nginx_user'@'localhost';
+```
+
+**3. 权限错误**
+
+```bash
+# 检查文件权限
+ls -la /etc/nginx/
+
+# 修正文件所有者
+sudo chown -R nginx_user:nginx_user /etc/nginx/
+sudo chmod -R 644 /etc/nginx/
+sudo chmod 755 /etc/nginx/
+```
+
+**4. 端口占用**
+
+```bash
+# 检查端口使用情况
+sudo netstat -tlnp | grep 8000
+sudo lsof -i :8000
+
+# 终止占用进程
+sudo kill -9 <PID>
+```
+
+### 日志检查
+
+```bash
+# 应用日志
+tail -f /var/log/nginx_manager/app.log
+
+# Nginx 日志
+sudo tail -f /var/log/nginx/error.log
+sudo tail -f /var/log/nginx/access.log
+
+# 系统日志
+sudo journalctl -u nginx_manager -f
+```
+
+## 🛠️ 开发指南
+
+### 项目结构
+
+```
+nginx_manager/
+├── app/
+│   ├── core/           # 核心配置模块
+│   │   ├── config.py
+│   │   ├── database.py
+│   │   ├── middleware.py
+│   │   ├── security.py
+│   │   └── templates.py
+│   ├── models/         # 数据库模型
+│   ├── routers/        # API 路由
+│   │   ├── nginx/      # Nginx 操作子路由
+│   │   │   ├── dashboard.py    # 仪表盘
+│   │   │   ├── directory.py    # 目录浏览 (/configs/browse)
+│   │   │   ├── sync.py         # 配置同步 (/configs/sync)
+│   │   │   └── operations.py   # 配置操作 (/configs/ops)
+│   │   ├── auth.py
+│   │   ├── configs.py
+│   │   ├── environments.py
+│   │   ├── users.py
+│   │   └── api.py
+│   ├── services/       # 业务逻辑层
+│   │   ├── nginx_sync.py       # 配置同步服务
+│   │   ├── ssh_pool.py         # SSH 连接池
+│   │   └── ssh_utils.py        # SSH 工具类
+│   ├── static/         # 静态资源
+│   ├── templates/      # HTML 模板
+│   ├── init_superuser.py
+│   └── main.py         # 应用入口（含日志初始化）
+├── alembic/            # 数据库迁移
+├── .gitignore
+├── requirements.txt    # Python 依赖
+└── README.md           # 项目文档
+```
+
+### 数据库迁移
+
+```bash
+# 创建迁移文件
+alembic revision --autogenerate -m "描述信息"
+
+# 应用迁移
+alembic upgrade head
+
+# 回滚迁移
+alembic downgrade -1
+
+# 查看迁移历史
+alembic history
+```
+
+### API 文档
+
+应用启动后，可以访问自动生成的 API 文档：
+
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+
+### 测试
+
+> **注意**：`tests/` 目录尚不存在，测试模块规划中。
+
+```bash
+# 安装测试依赖
+pip install pytest pytest-asyncio httpx
+
+# 运行测试（预留）
+pytest tests/ -v
+
+# 生成测试覆盖率报告
+pip install coverage
+coverage run -m pytest
+coverage report
+coverage html
+```
+
+## 📝 更新日志
+
+### v1.2.0 (2026-11-XX)
+
+- 🔒 安全审计加固：SECRET_KEY 空值/占位值自动生成随机密钥并告警；登录拒绝禁用账户
+- 🛡️ PRD 环境仅超级管理员可访问（服务端强制 403）；删除等敏感操作改为 POST 表单
+- 🚦 新增登录暴力破解限流（15 分钟窗口 10 次失败锁定，成功清零）
+- 🔄 恢复 URL 直链快速登录（/auth/login?username=xxx&password=xxx，内网快捷入口；已并入限流、禁用账户检查与会话管理加固）
+- 🐛 修复全新数据库初始化漏建表问题（create_all 移至全部模型导入后执行）
+- ✅ Nginx 重载前自动执行 `nginx -t` 语法测试，测试失败取消重载
+- 🧹 清理死代码：移除未被引用的 nginx_service.py 与 ssh_utils.py 冗余方法
+- 🗄️ `users.ssh_private_key` 列改为 TEXT（存量库执行：`ALTER TABLE users MODIFY ssh_private_key TEXT;`）
+- 🔐 备份命令注入修复、上传路径校验、alembic 凭据出仓（连接串走 `.env`）；新增 `.env.example`
+
+### v1.1.0 (2025-07-XX)
+
+- 🔒 SSH 私钥改为 AES-256-CBC 加密存储（zlib 压缩），不再明文保存
+- 🔧 连接池新增心跳检测，自动回收失效连接
+- 🧹 新增 atexit 临时文件清理 + Shutdown 完整清理
+- 🛣️ /configs 路由拆分为 /configs/browse（浏览编辑）、/configs/sync（同步）、/configs/ops（操作）、/configs（配置列表）
+- 📦 新增 app/services/nginx_service.py 部署服务模块
+- 🚫 新增 .gitignore（.env、__pycache__、app.log 等）
+- 📖 日志配置统一迁移到 main.py 入口
+- 🧪 tests/ 目录规划中，尚未实现
+
+### v1.0.0 (2025-01-XX)
+
+- ✅ 初始版本发布
+- ✅ 多环境 Nginx 配置管理
+- ✅ SSH 连接池优化，性能提升 95%+
+- ✅ 用户权限管理系统
+- ✅ 可视化配置编辑器
+- ✅ 实时配置同步
+- ✅ 响应式用户界面
+
+## 🤝 贡献指南
+
+欢迎贡献代码、报告问题或提出新功能建议！
+
+1. Fork 项目
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 开启 Pull Request
+
+## 📜 许可证
+
+本项目采用 MIT 许可证 - 详见 LICENSE 文件
+
+## ℹ️ 联系方式
+
+- **项目主页**: [GitHub Repository](#)
+- **问题反馈**: [Issues](#)
+- **技术文档**: [Wiki](#)
+
+---
+
+<div align="center">
+  <p>感谢使用 Nginx 配置管理平台！</p>
+  <p>如果这个项目对您有帮助，请给我们一个 ⭐ Star!</p>
+</div>

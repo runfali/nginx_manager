@@ -1,4 +1,5 @@
 import base64
+import logging
 import secrets
 import zlib
 from datetime import datetime, timedelta
@@ -12,6 +13,8 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.padding import PKCS7
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 # 密码哈希上下文
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -44,7 +47,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 
 
 def _derive_aes_key() -> bytes:
-    salt = b"nginx_manager_ssh_salt"  # constant salt, ok for single-app dev
+    salt = b"nginx_manager_ssh_salt"  # ponytail: constant salt, ok for single-app dev
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
@@ -92,4 +95,7 @@ def decrypt_private_key(ciphertext: Optional[str]) -> Optional[str]:
         plain = unpadder.update(padded) + unpadder.finalize()
         return zlib.decompress(plain).decode()
     except Exception:
-        return ciphertext
+        # 解密失败返回 None（视为未配置私钥），绝不能把密文当明文传给paramiko，
+        # 否则连接必然失败且报错难以理解。
+        logger.warning("SSH私钥解密失败，按未配置私钥处理")
+        return None

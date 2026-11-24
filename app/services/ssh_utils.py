@@ -1,9 +1,43 @@
 from typing import Optional, Tuple, Dict, Any
+import posixpath
+import shlex
 import paramiko
 import tempfile
 import os
 from fastapi import HTTPException
 from app.services.ssh_pool import connection_pool, SSHConnection
+
+
+def validate_relative_path(base: str, rel: str) -> str:
+    """校验相对路径并拼接到 base 下（远端为Linux，统一使用posixpath）。
+    禁止绝对路径与 .. 穿越，返回规范化后的绝对路径。"""
+    base = (base or "").strip().replace("\\", "/")
+    rel = (rel or "").strip().replace("\\", "/")
+    if not base.startswith("/"):
+        raise ValueError("环境Nginx路径必须为绝对路径")
+    if rel.startswith("/") or rel.startswith("~"):
+        raise ValueError("路径必须为相对路径")
+    parts = [p for p in rel.split("/") if p not in ("", ".")]
+    if ".." in parts:
+        raise ValueError("路径中不允许包含 ..")
+    if not parts:
+        return posixpath.normpath(base)
+    return posixpath.normpath(posixpath.join(base, *parts))
+
+
+def validate_file_under_base(base: str, file_path: str) -> str:
+    """校验远端文件路径必须是位于 base 目录内的绝对路径，禁止 .. 穿越与越界写入。"""
+    base = (base or "").strip().replace("\\", "/")
+    p = (file_path or "").strip().replace("\\", "/")
+    if not base.startswith("/"):
+        raise ValueError("环境Nginx路径必须为绝对路径")
+    if not p.startswith("/"):
+        raise ValueError("文件路径必须为绝对路径")
+    norm = posixpath.normpath(p)
+    base_norm = posixpath.normpath(base).rstrip("/")
+    if norm == base_norm or not norm.startswith(base_norm + "/"):
+        raise ValueError(f"文件路径必须位于 {base_norm} 目录内")
+    return norm
 
 
 def read_sftp_file_multi_encoding(sftp: paramiko.SFTPClient, file_path: str) -> str:
@@ -64,13 +98,17 @@ class SSHUtils:
         private_key_content: Optional[str] = None,
         private_key_path: Optional[str] = None,
     ) -> paramiko.SSHClient:
-        connection = connection_pool.get_connection(
-            hostname=hostname,
-            port=port,
-            username=username,
-            private_key_content=private_key_content,
-            private_key_path=private_key_path,
-        )
+        try:
+            connection = connection_pool.get_connection(
+                hostname=hostname,
+                port=port,
+                username=username,
+                private_key_content=private_key_content,
+                private_key_path=private_key_path,
+            )
+        except ValueError as e:
+            # 未配置私钥等业务性错误返回400，便于前端提示
+            raise HTTPException(status_code=400, detail=str(e))
         if connection.ssh_client is None:
             raise HTTPException(status_code=500, detail="SSH连接失败")
         return connection.ssh_client
@@ -125,78 +163,6 @@ class SSHUtils:
                         pass  # 忽略关闭时的异常
 
     @staticmethod
-    def execute_batch_commands(
-        ssh_client: paramiko.SSHClient, commands: list[str], timeout: int = 30
-    ) -> Dict[str, Tuple[int, str, str]]:
-        """
-        批量执行SSH命令，提高效率
-
-        Args:
-            ssh_client: SSH客户端
-            commands: 要执行的命令列表
-            timeout: 命令执行超时时间（秒）
-
-        Returns:
-            Dict[str, Tuple[int, str, str]]: 命令到结果的映射
-        """
-        results = {}
-
-        # 将多个命令组合成一个复合命令
-        combined_command = "; ".join(
-            [
-                f"echo 'CMD_START_{i}'; {cmd}; echo 'CMD_END_{i}_$?'"
-                for i, cmd in enumerate(commands)
-            ]
-        )
-
-        try:
-            exit_code, output, error = SSHUtils.execute_command(
-                ssh_client, combined_command, timeout
-            )
-
-            # 解析输出
-            lines = output.strip().split("\n")
-            current_cmd_idx = None
-            current_output = []
-
-            for line in lines:
-                if line.startswith("CMD_START_"):
-                    current_cmd_idx = int(line.split("_")[2])
-                    current_output = []
-                elif line.startswith("CMD_END_"):
-                    parts = line.split("_")
-                    cmd_idx = int(parts[2])
-                    cmd_exit_code = int(parts[3])
-
-                    if current_cmd_idx == cmd_idx:
-                        cmd_output = "\n".join(current_output)
-                        results[commands[cmd_idx]] = (cmd_exit_code, cmd_output, "")
-                else:
-                    if current_cmd_idx is not None:
-                        current_output.append(line)
-
-            # 如果解析失败，回退到逐个执行
-            if len(results) != len(commands):
-                results.clear()
-                for cmd in commands:
-                    try:
-                        result = SSHUtils.execute_command(ssh_client, cmd, timeout)
-                        results[cmd] = result
-                    except Exception as e:
-                        results[cmd] = (1, "", str(e))
-
-        except Exception as e:
-            # 如果批量执行失败，回退到逐个执行
-            for cmd in commands:
-                try:
-                    result = SSHUtils.execute_command(ssh_client, cmd, timeout)
-                    results[cmd] = result
-                except Exception as cmd_e:
-                    results[cmd] = (1, "", str(cmd_e))
-
-        return results
-
-    @staticmethod
     def get_directory_info(
         ssh_client: paramiko.SSHClient, directory_path: str, timeout: int = 30
     ) -> Dict[str, Dict[str, Any]]:
@@ -213,7 +179,7 @@ class SSHUtils:
         """
         # 使用find命令一次性获取所有文件信息
         command = """
-        cd "{}" 2>/dev/null && \
+        cd {} 2>/dev/null && \
         find . -maxdepth 1 -mindepth 1 -exec sh -c '
             for file; do
                 basename="$(basename "$file")"
@@ -233,7 +199,7 @@ class SSHUtils:
             done
         ' sh {{}} +
         """.format(
-            directory_path
+            shlex.quote(directory_path)
         )
 
         try:
@@ -283,118 +249,4 @@ class SSHUtils:
         connection.sftp_client = sftp_client
         return sftp_client
 
-    @staticmethod
-    def upload_file(
-        connection: SSHConnection,
-        ssh_client: paramiko.SSHClient,
-        local_content: str,
-        remote_path: str,
-        mode: int = 0o644,
-    ) -> None:
-        """上传文件内容到远程服务器"""
-        if not ssh_client:
-            raise RuntimeError("SSH未连接")
 
-        temp_path = None
-        try:
-            with tempfile.NamedTemporaryFile(mode="w", delete=False) as temp_file:
-                temp_file.write(local_content)
-                temp_path = temp_file.name
-
-            sftp = SSHUtils.get_sftp_client(connection, ssh_client)
-            sftp.put(temp_path, remote_path)
-            sftp.chmod(remote_path, mode)
-        except Exception as e:
-            raise RuntimeError(f"文件上传失败: {str(e)}") from e
-        finally:
-            if temp_path and os.path.exists(temp_path):
-                try:
-                    os.unlink(temp_path)
-                except Exception:
-                    pass
-
-    @staticmethod
-    def download_file(
-        connection: SSHConnection,
-        ssh_client: paramiko.SSHClient,
-        remote_path: str,
-    ) -> str:
-        """从远程服务器下载文件内容"""
-        if not ssh_client:
-            raise RuntimeError("SSH未连接")
-
-        temp_path = None
-        try:
-            sftp = SSHUtils.get_sftp_client(connection, ssh_client)
-
-            temp_file = tempfile.NamedTemporaryFile(delete=False)
-            temp_path = temp_file.name
-            temp_file.close()
-
-            sftp.get(remote_path, temp_path)
-
-            content = ""
-            encodings = ["utf-8", "gbk", "gb2312", "latin1"]
-            for encoding in encodings:
-                try:
-                    with open(temp_path, "r", encoding=encoding) as f:
-                        content = f.read()
-                    break
-                except UnicodeDecodeError:
-                    continue
-
-            if not content:
-                with open(temp_path, "rb") as f:
-                    content = f.read().decode("latin1")
-
-            return content
-        except Exception as e:
-            raise RuntimeError(f"文件下载失败: {str(e)}") from e
-        finally:
-            if temp_path and os.path.exists(temp_path):
-                try:
-                    os.unlink(temp_path)
-                except Exception:
-                    pass
-
-    @staticmethod
-    def with_ssh_connection(
-        hostname: str,
-        port: int,
-        username: str,
-        private_key_content: Optional[str],
-        operation_func,
-        *args,
-        **kwargs,
-    ):
-        """
-        使用SSH连接执行操作的装饰器函数
-
-        Args:
-            hostname: 主机名
-            port: 端口
-            username: 用户名
-            private_key_content: 私钥内容
-            operation_func: 要执行的操作函数
-            *args, **kwargs: 传递给操作函数的参数
-
-        Returns:
-            Any: 操作函数的返回值
-        """
-        # 获取SSH连接
-        connection, ssh_client = SSHUtils.get_ssh_connection(
-            hostname=hostname,
-            port=port,
-            username=username,
-            private_key_content=private_key_content,
-        )
-
-        try:
-            # 确保ssh_client不为None
-            if ssh_client is None:
-                raise RuntimeError("SSH客户端未初始化或连接失败")
-
-            # 执行操作
-            return operation_func(ssh_client, *args, **kwargs)
-        except Exception as e:
-            raise e

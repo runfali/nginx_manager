@@ -14,10 +14,15 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+from app.core.config import settings
 from app.core.database import Base
 from app.models import user, environment, nginx_config
 
 target_metadata = Base.metadata
+
+# 数据库连接串从应用配置（.env/环境变量）注入，
+# 避免在 alembic.ini 中硬编码明文数据库凭据。
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

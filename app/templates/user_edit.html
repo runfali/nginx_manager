@@ -55,9 +55,14 @@
 
                 <div class="mb-3">
                     <label for="ssh_private_key" class="form-label">SSH私钥</label>
-                    <textarea class="form-control" id="ssh_private_key" name="ssh_private_key"
-                        rows="5">{{ user.ssh_private_key }}</textarea>
-                    <div class="form-text">用于连接服务器的SSH私钥，格式如：-----BEGIN RSA PRIVATE KEY-----...</div>
+                    <textarea class="form-control" id="ssh_private_key" name="ssh_private_key" rows="5"
+                        placeholder="留空表示保持现有私钥不变"></textarea>
+                    <div class="form-text">已保存的私钥不会回显。仅当需要更换时才粘贴新的私钥内容（-----BEGIN ... PRIVATE KEY----- 格式）。</div>
+                </div>
+
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="remove_ssh_key" name="remove_ssh_key" value="true">
+                    <label class="form-check-label" for="remove_ssh_key">清除已保存的SSH私钥</label>
                 </div>
 
                 <div class="d-grid gap-2 d-md-flex justify-content-md-end">

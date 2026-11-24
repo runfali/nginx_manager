@@ -1,13 +1,19 @@
 from typing import Dict, Optional, Any
 import os
 import logging
+import shlex
 from sqlalchemy.orm import Session
 
 from app.models.environment import Environment
 from app.models.nginx_config import NginxConfig
 from app.models.user import User
 from app.core.security import decrypt_private_key
-from app.services.ssh_utils import SSHUtils, read_sftp_file_multi_encoding
+from app.services.ssh_utils import (
+    SSHUtils,
+    read_sftp_file_multi_encoding,
+    validate_relative_path,
+    validate_file_under_base,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +41,19 @@ async def sync_nginx_configs(
     if not env:
         return {"success": False, "message": "环境不存在"}
 
-    # 确定要同步的目录路径
-    sync_path = os.path.join(env.nginx_path, path) if path else env.nginx_path
+    # PRD环境仅超级管理员可操作
+    if not current_user.is_superuser and "PRD" in env.name.upper():
+        return {"success": False, "message": "权限不足，PRD环境仅超级管理员可操作"}
+
+    # 未配置私钥的用户直接拒绝（连接池不再回退默认密钥）
+    if not current_user.ssh_private_key:
+        return {"success": False, "message": "请先在个人资料中设置SSH私钥"}
+
+    # 确定要同步的目录路径（校验相对路径，防穿越/注入）
+    try:
+        sync_path = validate_relative_path(env.nginx_path, path or "")
+    except ValueError as e:
+        return {"success": False, "message": f"非法的同步路径: {e}"}
 
     ssh = None
     sftp = None
@@ -54,7 +71,8 @@ async def sync_nginx_configs(
             return {"success": False, "message": "SSH连接失败"}
 
         exit_code, output, error = SSHUtils.execute_command(
-            ssh_client=ssh, command=f"find -L {sync_path} -type f -name '*.conf'"
+            ssh_client=ssh,
+            command=f"find -L {shlex.quote(sync_path)} -type f -name '*.conf'",
         )
         find_output = output.strip()
 
@@ -175,6 +193,20 @@ async def sync_single_nginx_config(
     if not env:
         return {"success": False, "message": "环境不存在"}
 
+    # PRD环境仅超级管理员可操作
+    if not current_user.is_superuser and "PRD" in env.name.upper():
+        return {"success": False, "message": "权限不足，PRD环境仅超级管理员可操作"}
+
+    # 未配置私钥的用户直接拒绝（连接池不再回退默认密钥）
+    if not current_user.ssh_private_key:
+        return {"success": False, "message": "请先在个人资料中设置SSH私钥"}
+
+    # 单文件同步仅允许Nginx目录内的路径（防止任意文件读取进数据库）
+    try:
+        file_path = validate_file_under_base(env.nginx_path, file_path)
+    except ValueError as e:
+        return {"success": False, "message": f"非法的文件路径: {e}"}
+
     ssh = None
     sftp = None
     try:
@@ -191,7 +223,7 @@ async def sync_single_nginx_config(
             return {"success": False, "message": "SSH连接失败"}
 
         exit_code, output, error = SSHUtils.execute_command(
-            ssh, f"test -f {file_path} && echo 'exists'"
+            ssh, f"test -f {shlex.quote(file_path)} && echo 'exists'"
         )
         file_exists = bool(output.strip())
 

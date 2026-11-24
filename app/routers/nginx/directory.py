@@ -3,6 +3,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from typing import Optional, List
 import os
+import re
+import shlex
 import tempfile
 import logging
 import datetime
@@ -15,9 +17,13 @@ from app.core.security import decrypt_private_key
 from app.models.nginx_config import NginxConfig
 from app.models.environment import Environment
 from app.models.user import User
-from app.routers.auth import get_current_active_user
+from app.routers.auth import get_current_active_user, ensure_env_access
 from app.core.templates import templates
-from app.services.ssh_utils import SSHUtils
+from app.services.ssh_utils import (
+    SSHUtils,
+    validate_relative_path,
+    validate_file_under_base,
+)
 from app.routers.nginx.operations import test_config as nginx_test_config
 from app.routers.nginx.operations import reload_test as nginx_reload_test, reload_exec as nginx_reload_exec
 
@@ -38,6 +44,9 @@ async def create_config_page(
     if not env:
         raise HTTPException(status_code=404, detail="环境不存在")
 
+    # 非超级管理员禁止访问PRD环境
+    ensure_env_access(env, current_user)
+
     # 获取环境列表（用于下拉选择）
     environments = db.query(Environment).filter(Environment.is_active == True).all()
 
@@ -45,14 +54,15 @@ async def create_config_page(
     if not current_user.is_superuser:
         environments = Environment.filter_prd(environments)
 
-    # 确定当前路径
+    # 确定当前路径（校验相对路径，防止绝对路径/.. 浏览服务器任意目录）
     current_path = path or ""
-    full_path = (
-        os.path.join(env.nginx_path, current_path) if current_path else env.nginx_path
-    )
+    try:
+        full_path = validate_relative_path(env.nginx_path, current_path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"非法的路径: {e}")
 
     # 预设文件路径
-    suggested_file_path = os.path.join(full_path, "new_config.conf")
+    suggested_file_path = f"{full_path}/new_config.conf"
 
     return templates.TemplateResponse(
         "config_create.html",
@@ -85,6 +95,9 @@ async def create_config(
     if not env:
         raise HTTPException(status_code=404, detail="环境不存在")
 
+    # 非超级管理员禁止操作PRD环境
+    ensure_env_access(env, current_user)
+
     # 检查环境是否存在
     selected_env = (
         db.query(Environment)
@@ -102,6 +115,9 @@ async def create_config(
             },
         )
 
+    # 目标环境同样受PRD权限约束
+    ensure_env_access(selected_env, current_user)
+
     # 检查配置名称是否已存在于该环境
     db_config = (
         db.query(NginxConfig)
@@ -114,6 +130,21 @@ async def create_config(
             {
                 "request": request,
                 "error": "该环境下已存在同名配置",
+                "current_user": current_user,
+                "env_id": env_id,
+            },
+        )
+
+    # 校验目标文件路径：必须是该环境Nginx目录内的绝对路径
+    # （防止把任意文件写到服务器任意位置，如 authorized_keys）
+    try:
+        file_path = validate_file_under_base(selected_env.nginx_path, file_path)
+    except ValueError as e:
+        return templates.TemplateResponse(
+            "config_create.html",
+            {
+                "request": request,
+                "error": f"非法的文件路径: {e}",
                 "current_user": current_user,
                 "env_id": env_id,
             },
@@ -151,12 +182,12 @@ async def create_config(
                 username="root",
                 private_key_content=decrypt_private_key(current_user.ssh_private_key),
             )
-        except HTTPException:
+        except HTTPException as http_ex:
             return templates.TemplateResponse(
                 "config_create.html",
                 {
                     "request": request,
-                    "error": "SSH连接失败",
+                    "error": str(http_ex.detail),
                     "current_user": current_user,
                     "env_id": env_id,
                 },
@@ -167,7 +198,17 @@ async def create_config(
         sftp.chmod(file_path, 0o644)
 
     except Exception as e:
+        # 上传失败不再静默吞掉：明确告知，DB记录保留可稍后通过同步功能重推
         logger.exception("上传配置文件失败")
+        return templates.TemplateResponse(
+            "config_create.html",
+            {
+                "request": request,
+                "error": f"配置已保存到数据库，但上传到服务器失败: {e}",
+                "current_user": current_user,
+                "env_id": env_id,
+            },
+        )
 
     finally:
         if config_temp_path is not None and os.path.exists(config_temp_path):
@@ -193,6 +234,9 @@ async def view_config_page(
     if not config:
         raise HTTPException(status_code=404, detail="配置不存在")
 
+    # 非超级管理员禁止查看PRD环境的配置
+    ensure_env_access(config.env, current_user)
+
     return templates.TemplateResponse(
         "config_view.html",
         {"request": request, "config": config, "current_user": current_user},
@@ -210,6 +254,9 @@ async def edit_config_page(
     config = db.query(NginxConfig).filter(NginxConfig.id == config_id).first()
     if not config:
         raise HTTPException(status_code=404, detail="配置不存在")
+
+    # 非超级管理员禁止编辑PRD环境的配置
+    ensure_env_access(config.env, current_user)
 
     # 获取环境列表
     environments = db.query(Environment).filter(Environment.is_active == True).all()
@@ -245,6 +292,9 @@ async def update_config(
     if not config:
         raise HTTPException(status_code=404, detail="配置不存在")
 
+    # 非超级管理员禁止修改PRD环境的配置
+    ensure_env_access(config.env, current_user)
+
     # 检查环境是否存在
     env = (
         db.query(Environment)
@@ -258,6 +308,23 @@ async def update_config(
                 "request": request,
                 "config": config,
                 "error": "环境不存在或未激活",
+                "current_user": current_user,
+            },
+        )
+
+    # 目标环境同样受PRD权限约束
+    ensure_env_access(env, current_user)
+
+    # 校验目标文件路径：必须位于目标环境Nginx目录内
+    try:
+        file_path = validate_file_under_base(env.nginx_path, file_path)
+    except ValueError as e:
+        return templates.TemplateResponse(
+            "config_edit.html",
+            {
+                "request": request,
+                "config": config,
+                "error": f"非法的文件路径: {e}",
                 "current_user": current_user,
             },
         )
@@ -312,17 +379,26 @@ async def update_config(
                 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                 basename = os.path.basename(config.file_path)
                 backup_name = f"{basename}.{timestamp}.bak"
-                backup_path = os.path.join(backup_dir, backup_name)
+                # 远端为Linux路径，显式用/拼接（Windows宿主机上os.path.join会产生反斜杠）
+                backup_path = f"{backup_dir}/{backup_name}"
 
-                SSHUtils.execute_command(ssh, f"mkdir -p {backup_dir}")
+                # 远端路径一律shlex.quote，防止file_path拼入shell元字符
                 SSHUtils.execute_command(
-                    ssh, f"cp {config.file_path} {backup_path}"
+                    ssh, f"mkdir -p {shlex.quote(backup_dir)}"
                 )
-
                 SSHUtils.execute_command(
                     ssh,
-                    f"ls -t {backup_dir}/{basename}*.bak | tail -n +6 | xargs -r rm -f",
+                    f"cp {shlex.quote(config.file_path)} {shlex.quote(backup_path)}",
                 )
+
+                # 备份轮转：basename须通过白名单校验才允许进入glob
+                if re.fullmatch(r"[A-Za-z0-9._-]+", basename or ""):
+                    SSHUtils.execute_command(
+                        ssh,
+                        "cd {} && ls -t -- {}*.bak | tail -n +6 | xargs -r rm -f --".format(
+                            shlex.quote(backup_dir), shlex.quote(basename)
+                        ),
+                    )
         finally:
             sftp.close()
     except Exception:
@@ -347,11 +423,15 @@ async def browse_directory(
     if not env:
         raise HTTPException(status_code=404, detail="环境不存在")
 
-    # 确定当前路径
+    # 非超级管理员禁止浏览PRD环境
+    ensure_env_access(env, current_user)
+
+    # 确定当前路径（校验相对路径，防止绝对路径/.. 浏览服务器任意目录）
     current_path = path or ""
-    full_path = (
-        os.path.join(env.nginx_path, current_path) if current_path else env.nginx_path
-    )
+    try:
+        full_path = validate_relative_path(env.nginx_path, current_path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"非法的路径: {e}")
 
     # 生成面包屑导航
     breadcrumbs = []
@@ -419,8 +499,9 @@ async def browse_directory(
 
         config_map = {}
         if conf_files:
-            # 构建文件路径列表进行批量查询
-            file_paths = [os.path.join(full_path, name) for name in conf_files]
+            # 构建文件路径列表进行批量查询（远端为Linux，统一用/拼接，
+            # 避免Windows宿主机上os.path.join产生反斜杠导致匹配失败）
+            file_paths = [f"{full_path}/{name}" for name in conf_files]
             configs = (
                 db.query(NginxConfig)
                 .filter(
@@ -439,12 +520,12 @@ async def browse_directory(
             if not is_dir and not name.endswith(".conf"):
                 continue
 
-            item_full_path = os.path.join(current_path, name) if current_path else name
+            item_full_path = f"{current_path}/{name}" if current_path else name
 
             # 如果是文件，检查是否已在数据库中
             config_id = None
             if not is_dir and name.endswith(".conf"):
-                file_path = os.path.join(full_path, name)
+                file_path = f"{full_path}/{name}"
                 config_id = config_map.get(file_path)
 
             items.append(

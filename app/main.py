@@ -28,8 +28,7 @@ app = FastAPI(
 # 添加错误处理中间件
 app.add_middleware(ErrorHandlerMiddleware)
 
-# 创建数据库表
-Base.metadata.create_all(bind=engine)
+
 
 # 设置静态文件目录
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -49,6 +48,11 @@ app.include_router(operations.router, prefix="/configs/ops", tags=["操作管理
 # 确保具体路径的路由在参数路径的路由之前注册
 app.include_router(configs.router, prefix="/configs", tags=["配置管理"])
 app.include_router(api.router)
+
+# 创建数据库表（必须在全部模型/路由 import 完成后执行：
+# 若仅 import user/environment 就 create_all，会漏建其他模型（如 nginx_configs）的表，
+# 全新数据库上仪表盘查询 NginxConfig 将直接 500）
+Base.metadata.create_all(bind=engine)
 
 
 @app.on_event("startup")

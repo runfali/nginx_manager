@@ -41,10 +41,12 @@ if __name__ == "__main__":
     # 确保数据库表已创建
     Base.metadata.create_all(bind=engine)
 
+    import getpass
+
     # 设置超级管理员信息
     username = input("请输入用户名: ")
     email = input("请输入邮箱: ")
-    password = input("请输入密码: ")
+    password = getpass.getpass("请输入密码: ")
 
     # 创建超级管理员
     create_superuser(username, email, password)

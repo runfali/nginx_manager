@@ -22,7 +22,12 @@ async def sync_configs(
 
         # 如果同步失败，抛出异常
         if not result["success"]:
-            status_code = 404 if "未找到" in result["message"] else 500
+            if "未找到" in result["message"]:
+                status_code = 404
+            elif "PRD" in result["message"]:
+                status_code = 403
+            else:
+                status_code = 500
             raise HTTPException(status_code=status_code, detail=result["message"])
 
         return {"success": True}

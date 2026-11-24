@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, Integer, String, DateTime
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, Text
 from sqlalchemy.sql import func
 from app.core.database import Base
 from sqlalchemy.orm import Mapped, mapped_column
@@ -18,8 +18,8 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
     ssh_private_key: Mapped[str | None] = mapped_column(
-        String(2000), nullable=True
-    )  # 存储用户的SSH私钥
+        Text, nullable=True
+    )  # 存储用户的SSH私钥（TEXT：加密+Base64后可能超过VARCHAR(2000)）
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

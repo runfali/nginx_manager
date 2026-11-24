@@ -48,6 +48,7 @@ async def create_user(
     password: str = Form(...),
     is_superuser: bool = Form(False),
     ssh_private_key: Optional[str] = Form(None),
+    remove_ssh_key: bool = Form(False),
     current_user: User = Depends(get_current_superuser),
     db: Session = Depends(get_db),
 ):
@@ -74,7 +75,7 @@ async def create_user(
         email=email,
         hashed_password=hashed_password,
         is_superuser=is_superuser,
-        ssh_private_key=encrypt_private_key(ssh_private_key),
+        ssh_private_key=encrypt_private_key(ssh_private_key) if ssh_private_key else None,
     )
 
     db.add(new_user)
@@ -112,6 +113,7 @@ async def update_user(
     is_active: bool = Form(True),
     is_superuser: bool = Form(False),
     ssh_private_key: Optional[str] = Form(None),
+    remove_ssh_key: bool = Form(False),
     current_user: User = Depends(get_current_superuser),
     db: Session = Depends(get_db),
 ):
@@ -136,7 +138,13 @@ async def update_user(
     user.email = email
     user.is_active = is_active
     user.is_superuser = is_superuser
-    user.ssh_private_key = encrypt_private_key(ssh_private_key)
+
+    # SSH私钥：勾选清除则置空；填写了新值则加密保存；否则保留原值
+    # （修复：此前留空保存会把已有私钥静默清空/对密文重复加密）
+    if remove_ssh_key:
+        user.ssh_private_key = None
+    elif ssh_private_key:
+        user.ssh_private_key = encrypt_private_key(ssh_private_key)
 
     # 如果提供了新密码，则更新密码
     if password:
@@ -148,8 +156,8 @@ async def update_user(
     return RedirectResponse(url="/users", status_code=status.HTTP_302_FOUND)
 
 
-# 删除用户 - 仅超级管理员可访问
-@router.get("/{user_id}/delete")
+# 删除用户 - 仅超级管理员可访问（POST：GET删除可被CSRF/预加载触发）
+@router.post("/{user_id}/delete")
 async def delete_user(
     user_id: int,
     current_user: User = Depends(get_current_superuser),
@@ -187,6 +195,7 @@ async def update_profile(
     current_password: Optional[str] = Form(None),
     new_password: Optional[str] = Form(None),
     ssh_private_key: Optional[str] = Form(None),
+    remove_ssh_key: bool = Form(False),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
@@ -215,7 +224,13 @@ async def update_profile(
 
     # 更新用户信息
     current_user.email = email
-    current_user.ssh_private_key = encrypt_private_key(ssh_private_key)
+
+    # SSH私钥：勾选清除则置空；填写了新值则加密保存；否则保留原值
+    # （修复：此前留空保存会把已有私钥静默清空/对密文重复加密）
+    if remove_ssh_key:
+        current_user.ssh_private_key = None
+    elif ssh_private_key:
+        current_user.ssh_private_key = encrypt_private_key(ssh_private_key)
 
     db.commit()
     db.refresh(current_user)

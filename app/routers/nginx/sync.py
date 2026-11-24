@@ -30,6 +30,8 @@ async def sync_configs(
             status_code = 404
         elif "请先在个人资料中设置SSH私钥" in result["message"]:
             status_code = 400
+        elif "PRD" in result["message"]:
+            status_code = 403
         else:
             status_code = 500
 
@@ -54,6 +56,8 @@ async def sync_single_file(
             status_code = 404
         elif "请先在个人资料中设置SSH私钥" in result["message"]:
             status_code = 400
+        elif "PRD" in result["message"]:
+            status_code = 403
         else:
             status_code = 500
 

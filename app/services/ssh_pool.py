@@ -1,4 +1,5 @@
 from typing import Dict, Optional, Tuple
+import hashlib
 import paramiko
 import tempfile
 import os
@@ -119,7 +120,6 @@ class SSHConnectionPool:
         self.max_connections = max_connections
         self.connection_timeout = connection_timeout  # 连接超时时间（秒）
         self.connections: Dict[str, SSHConnection] = {}
-        self.default_key_path = "/data/nginx/AW"  # 默认SSH私钥路径
 
     def get_connection(
         self,
@@ -130,12 +130,18 @@ class SSHConnectionPool:
         private_key_path: Optional[str] = None,
     ) -> SSHConnection:
         """获取SSH连接，如果连接池中存在则复用，否则创建新连接"""
-        # 如果未提供私钥路径，使用默认路径
+        # 必须显式提供私钥（内容或路径）。不再回退到宿主机默认密钥：
+        # 那会让任何未配置私钥的登录用户都能以共享密钥连接任意环境服务器。
         if not private_key_path and not private_key_content:
-            private_key_path = self.default_key_path
+            raise ValueError("请先在个人资料中设置SSH私钥")
 
-        # 生成连接键
-        connection_key = f"{username}@{hostname}:{port}"
+        # 连接键必须包含私钥身份：否则不同用户连接同一台服务器时会
+        # 互相复用对方私钥建立的连接（越权使用他人凭据）。
+        if private_key_content:
+            key_id = hashlib.sha256(private_key_content.encode("utf-8")).hexdigest()[:12]
+        else:
+            key_id = "path:" + os.path.basename(private_key_path)
+        connection_key = f"{key_id}:{username}@{hostname}:{port}"
 
         # 检查连接是否存在且有效
         if connection_key in self.connections:

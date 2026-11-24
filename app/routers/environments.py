@@ -156,7 +156,8 @@ async def update_environment(
 
 
 # 删除环境 - 仅超级管理员可访问
-@router.get("/{env_id}/delete")
+# （POST：GET删除可被CSRF/预加载触发；有配置的环境先拒绝，避免FK约束500）
+@router.post("/{env_id}/delete")
 async def delete_environment(
     env_id: int,
     current_user: User = Depends(get_current_superuser),
@@ -165,6 +166,12 @@ async def delete_environment(
     env = db.query(Environment).filter(Environment.id == env_id).first()
     if not env:
         raise HTTPException(status_code=404, detail="环境不存在")
+
+    if env.configs:
+        raise HTTPException(
+            status_code=409,
+            detail=f"该环境下仍有 {len(env.configs)} 个配置文件，请先删除或迁移这些配置",
+        )
 
     db.delete(env)
     db.commit()
