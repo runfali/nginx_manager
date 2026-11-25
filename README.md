@@ -4,7 +4,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-green)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](#)
 
-一个现代化的多环境 Nginx 配置管理 Web 平台，基于 FastAPI 框架开发，为系统管理员和运维人员提供统一的 Nginx 配置管理解决方案。
+多环境 Nginx 配置管理平台：在浏览器中在线编辑配置、通过 SSH 直推目标服务器，内置 `nginx -t` 语法校验与配置热重载，并提供配置版本历史与一键回滚——面向系统管理员与运维人员。
 
 ## 🚀 项目概述
 
