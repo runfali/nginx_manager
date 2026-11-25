@@ -8,6 +8,7 @@ from app.models.environment import Environment
 from app.models.nginx_config import NginxConfig
 from app.models.user import User
 from app.core.security import decrypt_private_key
+from app.services.config_versions import record_version
 from app.services.ssh_utils import (
     SSHUtils,
     read_sftp_file_multi_encoding,
@@ -109,9 +110,20 @@ async def sync_nginx_configs(
 
                 if existing_config:
                     # 更新现有配置
+                    previous_content = existing_config.content
                     existing_config.content = content
                     existing_config.server_ip = env.server_ip
                     existing_config.updated_by = current_user.id
+                    # 服务器内容与库里不同才产生 sync 版本
+                    record_version(
+                        db,
+                        existing_config,
+                        content,
+                        "sync",
+                        current_user.id,
+                        note="从服务器同步",
+                        previous_content=previous_content,
+                    )
                 else:
                     # 创建新配置
                     new_config = NginxConfig(
@@ -124,6 +136,16 @@ async def sync_nginx_configs(
                         updated_by=current_user.id,
                     )
                     db.add(new_config)
+                    db.flush()  # 先取 id 再写首个版本快照
+                    record_version(
+                        db,
+                        new_config,
+                        content,
+                        "create",
+                        current_user.id,
+                        note="目录同步新建",
+                        force=True,
+                    )
                 synced_count += 1
             except Exception as file_error:
                 logger.exception("处理文件 %s 时出错", file_path)
@@ -267,8 +289,19 @@ async def sync_single_nginx_config(
 
         if existing_config:
             # 更新现有配置
+            previous_content = existing_config.content
             existing_config.content = content
             existing_config.updated_by = current_user.id
+            # 服务器内容与库里不同才产生 sync 版本
+            record_version(
+                db,
+                existing_config,
+                content,
+                "sync",
+                current_user.id,
+                note="从服务器同步",
+                previous_content=previous_content,
+            )
         else:
             # 创建新配置
             new_config = NginxConfig(
@@ -281,6 +314,16 @@ async def sync_single_nginx_config(
                 updated_by=current_user.id,
             )
             db.add(new_config)
+            db.flush()  # 先取 id 再写首个版本快照
+            record_version(
+                db,
+                new_config,
+                content,
+                "create",
+                current_user.id,
+                note="目录同步新建",
+                force=True,
+            )
 
         db.commit()
         return {"success": True, "message": f"成功同步配置文件 {name}"}

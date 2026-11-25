@@ -33,5 +33,17 @@ class NginxConfig(Base):
     creator = relationship("User", foreign_keys=[created_by], backref="created_configs")
     updater = relationship("User", foreign_keys=[updated_by], backref="updated_configs")
 
+    versions = relationship(
+        "NginxConfigVersion",
+        back_populates="config",
+        cascade="all, delete-orphan",
+        order_by="NginxConfigVersion.version_no.desc()",
+    )
+
     def __repr__(self):
         return f"<NginxConfig {self.name} ({self.environment})>"
+
+
+# 显式导入版本模型，确保它随 NginxConfig 一起注册到 Base.metadata。
+# create_all 只建「已注册」的表，漏导入会导致 nginx_config_versions 建不出来。
+from app.models.nginx_config_version import NginxConfigVersion  # noqa: E402,F401

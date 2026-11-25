@@ -19,6 +19,18 @@ from app.models.environment import Environment
 from app.models.user import User
 from app.routers.auth import get_current_active_user, ensure_env_access
 from app.core.templates import templates
+from app.models.nginx_config_version import NginxConfigVersion
+from app.services.config_versions import (
+    KEEP_VERSIONS,
+    build_diff_rows,
+    change_type_icon,
+    change_type_label,
+    diff_stats,
+    ensure_initial_version,
+    get_latest_version,
+    get_versions,
+    record_version,
+)
 from app.services.ssh_utils import (
     SSHUtils,
     validate_relative_path,
@@ -162,6 +174,16 @@ async def create_config(
     )
 
     db.add(new_config)
+    db.flush()  # 先拿到 id，才能写首个版本快照
+    record_version(
+        db,
+        new_config,
+        new_config.content,
+        "create",
+        current_user.id,
+        note="新建配置",
+        force=True,
+    )
     db.commit()
     db.refresh(new_config)
 
@@ -227,6 +249,7 @@ async def create_config(
 async def view_config_page(
     request: Request,
     config_id: int,
+    rollback: Optional[str] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
@@ -237,9 +260,25 @@ async def view_config_page(
     # 非超级管理员禁止查看PRD环境的配置
     ensure_env_access(config.env, current_user)
 
+    # 老配置首次纳入版本管理：补一条 init 版本作为「回到最初」的锚点
+    ensure_initial_version(db, config, current_user.id)
+
+    versions = get_versions(db, config.id)
+    latest = get_latest_version(db, config.id)
+
     return templates.TemplateResponse(
         "config_view.html",
-        {"request": request, "config": config, "current_user": current_user},
+        {
+            "request": request,
+            "config": config,
+            "current_user": current_user,
+            "versions": versions,
+            "latest_version_id": latest.id if latest else None,
+            "keep_versions": KEEP_VERSIONS,
+            "change_type_label": change_type_label,
+            "change_type_icon": change_type_icon,
+            "rollback_state": rollback,
+        },
     )
 
 
@@ -351,12 +390,24 @@ async def update_config(
         )
 
     # 更新配置信息
+    previous_content = config.content
     config.name = name
     config.environment = env.id
     config.server_ip = env.server_ip
     config.file_path = file_path
     config.content = content
     config.updated_by = current_user.id
+
+    # 内容真的变了才产生新版本（空保存不留下噪音版本）
+    record_version(
+        db,
+        config,
+        content,
+        "update",
+        current_user.id,
+        note="编辑保存",
+        previous_content=previous_content,
+    )
 
     db.commit()
     db.refresh(config)
@@ -406,6 +457,144 @@ async def update_config(
 
     return RedirectResponse(
         url=f"/configs/browse/view/{config.id}", status_code=status.HTTP_302_FOUND
+    )
+
+
+# 版本差异页 - 所有已登录用户可访问
+@router.get("/view/{config_id}/diff/{version_id}", response_class=HTMLResponse)
+async def view_config_diff(
+    request: Request,
+    config_id: int,
+    version_id: int,
+    base: str = "prev",
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    config = db.query(NginxConfig).filter(NginxConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="配置不存在")
+
+    # 非超级管理员禁止查看PRD环境的配置
+    ensure_env_access(config.env, current_user)
+
+    version = (
+        db.query(NginxConfigVersion)
+        .filter(
+            NginxConfigVersion.id == version_id,
+            NginxConfigVersion.config_id == config_id,
+        )
+        .first()
+    )
+    if not version:
+        raise HTTPException(status_code=404, detail="版本不存在")
+
+    # 上一版本：版本号比当前小的最近一条
+    previous_version = (
+        db.query(NginxConfigVersion)
+        .filter(
+            NginxConfigVersion.config_id == config_id,
+            NginxConfigVersion.version_no < version.version_no,
+        )
+        .order_by(NginxConfigVersion.version_no.desc())
+        .first()
+    )
+
+    if base == "current":
+        # 该版本 vs 当前内容：用来确认「这个版本之后又改了什么」
+        old_text = version.content
+        old_label = f"v{version.version_no}"
+        new_text = config.content
+        new_label = "当前内容"
+    else:
+        old_text = previous_version.content if previous_version else ""
+        old_label = (
+            f"v{previous_version.version_no}" if previous_version else "（无更早版本）"
+        )
+        new_text = version.content
+        new_label = f"v{version.version_no}"
+
+    rows = build_diff_rows(old_text, new_text)
+    stats = diff_stats(rows)
+
+    latest = get_latest_version(db, config_id)
+
+    return templates.TemplateResponse(
+        "config_diff.html",
+        {
+            "request": request,
+            "config": config,
+            "version": version,
+            "base": "current" if base == "current" else "prev",
+            "old_label": old_label,
+            "new_label": new_label,
+            "rows": rows,
+            "stats": stats,
+            "is_current": latest is not None and latest.id == version.id,
+            "has_changes": (stats["added"] + stats["removed"]) > 0,
+            "has_previous": previous_version is not None,
+            "current_user": current_user,
+            "change_type_label": change_type_label,
+            "change_type_icon": change_type_icon,
+        },
+    )
+
+
+# 一键回滚 - 所有已登录用户可访问（与编辑同源权限：PRD 仅超级管理员）
+@router.post("/view/{config_id}/rollback/{version_id}")
+async def rollback_config(
+    request: Request,
+    config_id: int,
+    version_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    config = db.query(NginxConfig).filter(NginxConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="配置不存在")
+
+    # 与编辑保存使用同一套守卫，避免回滚成为绕过 PRD 限制的通道
+    ensure_env_access(config.env, current_user)
+
+    version = (
+        db.query(NginxConfigVersion)
+        .filter(
+            NginxConfigVersion.id == version_id,
+            NginxConfigVersion.config_id == config_id,
+        )
+        .first()
+    )
+    if not version:
+        raise HTTPException(status_code=404, detail="版本不存在")
+
+    # 内容已经一致：不动库，直接回详情页提示
+    if config.content == version.content:
+        return RedirectResponse(
+            url=f"/configs/browse/view/{config_id}?rollback=noop",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    # revert 语义：内容覆盖为历史版本，并追加一条 rollback 记录，绝不删除任何历史
+    previous_content = config.content
+    config.content = version.content
+    config.updated_by = current_user.id
+    record_version(
+        db,
+        config,
+        version.content,
+        "rollback",
+        current_user.id,
+        note=f"回滚到 v{version.version_no}",
+        force=True,
+        previous_content=previous_content,
+    )
+    db.commit()
+    db.refresh(config)
+
+    # 只回滚库内配置内容：不发 SSH、不自动 reload。
+    # 生效仍由用户手动点击「重载配置」，统一走 nginx -t + 失败保护链路。
+    return RedirectResponse(
+        url=f"/configs/browse/view/{config_id}?rollback=done",
+        status_code=status.HTTP_302_FOUND,
     )
 
 

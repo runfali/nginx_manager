@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+
+{% block title %}版本对比 - {{ config.name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1" style="font-size: 1.5rem; font-weight: 700;">版本对比</h2>
+            <div class="text-muted" style="font-size: 0.875rem;">
+                {{ config.name }} · {{ config.env.name if config.env else "N/A" }} · {{ config.file_path }}
+            </div>
+        </div>
+        <a href="/configs/browse/view/{{ config.id }}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i> 返回详情
+        </a>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="card-title mb-0">
+                <i class="fas fa-code-compare me-2" style="color: var(--primary);"></i>变更信息
+            </h5>
+            <div class="btn-group btn-group-sm" role="group" aria-label="对比基准">
+                <a href="?base=prev"
+                   class="btn {{ 'btn-primary' if base == 'prev' else 'btn-outline-primary' }}{% if not has_previous %} disabled{% endif %}"
+                   {% if not has_previous %}aria-disabled="true" tabindex="-1"{% endif %}>
+                    <i class="fas fa-arrow-left me-1"></i>对比上一版本
+                </a>
+                <a href="?base=current"
+                   class="btn {{ 'btn-primary' if base == 'current' else 'btn-outline-primary' }}{% if is_current %} disabled{% endif %}"
+                   {% if is_current %}aria-disabled="true" tabindex="-1"{% endif %}>
+                    对比当前版本<i class="fas fa-arrow-right ms-1"></i>
+                </a>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row g-4">
+                <div class="col-sm-6 col-lg-3">
+                    <div class="info-label">版本</div>
+                    <div class="info-value">
+                        <span class="version-pill">v{{ version.version_no }}</span>
+                        {% if is_current %}<span class="badge bg-primary ms-1">最新</span>{% endif %}
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="info-label">变更类型</div>
+                    <div class="info-value">
+                        <span class="change-badge change-{{ version.change_type }}">
+                            <i class="fas {{ change_type_icon(version.change_type) }} me-1"></i>{{ change_type_label(version.change_type) }}
+                        </span>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="info-label">时间</div>
+                    <div class="info-value">{{ version.created_at.strftime('%Y-%m-%d %H:%M:%S') if version.created_at else '未记录' }}</div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="info-label">操作人</div>
+                    <div class="info-value">{{ version.creator.username if version.creator else '系统' }}</div>
+                </div>
+            </div>
+
+            <hr style="margin: 1.25rem 0; border-color: var(--border-color);">
+
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="d-flex align-items-center gap-3">
+                    <span class="text-muted" style="font-size: 0.875rem;">
+                        <i class="fas fa-minus me-1"></i>基准：<strong>{{ old_label }}</strong>
+                        <i class="fas fa-arrow-right mx-2" style="opacity: .45;"></i>
+                        对比：<strong>{{ new_label }}</strong>
+                    </span>
+                    <span class="diff-stat diff-stat-add">+{{ stats.added }}</span>
+                    <span class="diff-stat diff-stat-del">-{{ stats.removed }}</span>
+                </div>
+                {% if not is_current %}
+                <button type="button" class="btn btn-sm btn-warning"
+                        onclick="rollbackTo({{ version.id }}, {{ version.version_no }})">
+                    <i class="fas fa-undo-alt me-1"></i> 回滚到此版本
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="card-title mb-0">
+                <i class="fas fa-file-code me-2" style="color: var(--primary);"></i>内容差异
+            </h5>
+            <span class="text-muted" style="font-size: 0.8125rem;">绿色为新增，红色为删除</span>
+        </div>
+        <div class="card-body p-0">
+            {% if has_changes %}
+            <div class="diff-wrap">
+                <table class="diff-table">
+                    <tbody>
+                        {% for row in rows %}
+                        {% if row.type == 'skip' %}
+                        <tr class="diff-skip">
+                            <td colspan="3">⋯ 未改动的行 ⋯</td>
+                        </tr>
+                        {% else %}
+                        <tr class="diff-{{ row.type }}">
+                            <td class="diff-no">{{ row.old_no if row.old_no is not none else '' }}</td>
+                            <td class="diff-no">{{ row.new_no if row.new_no is not none else '' }}</td>
+                            <td class="diff-code"><span class="diff-sign">{% if row.type == 'add' %}+{% elif row.type == 'del' %}-{% else %} {% endif %}</span>{{ row.text }}</td>
+                        </tr>
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center text-muted py-5">
+                <i class="fas fa-equals fa-2x mb-3 d-block" style="opacity: .3;"></i>
+                两侧内容一致，没有差异
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .version-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 44px;
+        vertical-align: middle;
+        padding: 0.125rem 0.5rem;
+        border-radius: var(--radius-pill);
+        background: #eff6ff;
+        color: var(--primary);
+        font-weight: 600;
+        font-size: 0.8125rem;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .change-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.125rem 0.5rem;
+        border-radius: var(--radius-pill);
+        font-size: 0.75rem;
+        font-weight: 500;
+        white-space: nowrap;
+    }
+
+    .change-create { background: #ecfdf5; color: #047857; }
+    .change-update { background: #eff6ff; color: #1d4ed8; }
+    .change-sync { background: #fff7ed; color: #c2410c; }
+    .change-rollback { background: #fef3c7; color: #b45309; }
+    .change-init { background: #f1f5f9; color: #475569; }
+
+    .diff-stat {
+        display: inline-block;
+        min-width: 42px;
+        padding: 0.125rem 0.5rem;
+        border-radius: var(--radius-pill);
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-align: center;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .diff-stat-add { background: #ecfdf5; color: #047857; }
+    .diff-stat-del { background: #fef2f2; color: #b91c1c; }
+
+    .diff-wrap {
+        max-height: 68vh;
+        overflow: auto;
+        border-radius: 0 0 var(--radius) var(--radius);
+    }
+
+    .diff-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 0.8125rem;
+        line-height: 1.55;
+        background: #ffffff;
+    }
+
+    .diff-table td {
+        padding: 0.0625rem 0.5rem;
+        vertical-align: top;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .diff-no {
+        width: 52px;
+        min-width: 52px;
+        text-align: right;
+        color: #94a3b8;
+        background: #f8fafc;
+        border-right: 1px solid var(--border-color);
+        user-select: none;
+    }
+
+    .diff-code { width: 100%; }
+
+    .diff-sign {
+        display: inline-block;
+        width: 1rem;
+        color: #94a3b8;
+        user-select: none;
+    }
+
+    .diff-add { background: #ecfdf5; }
+    .diff-add .diff-code { color: #047857; }
+    .diff-add .diff-sign { color: #059669; }
+
+    .diff-del { background: #fef2f2; }
+    .diff-del .diff-code { color: #b91c1c; }
+    .diff-del .diff-sign { color: #dc2626; }
+
+    .diff-skip td {
+        background: #f8fafc;
+        color: #94a3b8;
+        text-align: center;
+        font-size: 0.75rem;
+        padding: 0.25rem;
+        border-top: 1px dashed var(--border-color);
+        border-bottom: 1px dashed var(--border-color);
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function rollbackTo(versionId, versionNo) {
+        const confirmResult = await Swal.fire({
+            title: '确认回滚到 v' + versionNo,
+            html: '<div style="text-align:left;line-height:1.75;">'
+                + '<div style="margin-bottom:.5rem;">将把配置内容恢复为 <strong>v' + versionNo + '</strong> 的内容。</div>'
+                + '<div style="color:#b45309;font-size:.875rem;">'
+                + '<i class="fas fa-exclamation-triangle me-1"></i>'
+                + '只回滚配置内容，<strong>不会自动重载 Nginx</strong>；回滚后需手动点击「重载配置」才会生效。'
+                + '</div></div>',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: '确认回滚',
+            cancelButtonText: '取消',
+            confirmButtonColor: '#f59e0b',
+            cancelButtonColor: '#64748b',
+            customClass: {
+                popup: 'swal-popup-custom',
+                confirmButton: 'swal-confirm-btn',
+                cancelButton: 'swal-cancel-btn',
+                title: 'swal-title-custom',
+                htmlContainer: 'swal-content-custom'
+            }
+        });
+        if (!confirmResult.isConfirmed) {
+            return;
+        }
+
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/configs/browse/view/{{ config.id }}/rollback/' + versionId;
+        document.body.appendChild(form);
+        form.submit();
+    }
+</script>
+{% endblock %}
